@@ -2074,6 +2074,10 @@ void main(void)
 	uip_arp_init();
 	httpd_init();
 
+        print_string("\ncall nts_init\n");
+        nts_init();
+        print_string("\n ### nts_init done ###\n");
+
 	management_vlan = 1; // Default management VLAN is 1
 
 	setup_i2c();

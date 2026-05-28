@@ -6,6 +6,7 @@
 /*
  * Select your machine type below
  */
+#define MACHINE_REM_V0_0_0
 // #define MACHINE_KP_9000_6XHML_X2
 // #define MACHINE_KP_9000_6XH_X
 // #define MACHINE_KP_9000_6XH_X2
