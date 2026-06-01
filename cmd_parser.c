@@ -48,6 +48,8 @@ __xdata uint16_t vlan_ptr;
 __xdata char port_names[9][PORT_NAME_SIZE];
 
 extern __xdata uint16_t management_vlan;
+extern __xdata uint8_t sfp_speed[2];
+extern __xdata uint8_t sfp_pins_last;
 __xdata uint8_t gpio_last_value[8] = { 0 };
 
 // Temporatly for str to hex convertion value.
@@ -331,6 +333,8 @@ void parse_vlan(void)
 	vlan_settings.vlan = 0;
 	vlan_settings.members = 0;
 	vlan_settings.tagged = 0;
+	if (cmd_words_len < 2)
+		goto err;
 	if (!atoi_short(&vlan_settings.vlan, cmd_words_b[1])) {
 		if (cmd_words_len == 3 && cmd_buffer[cmd_words_b[2]] == 'd') {
 			vlan_delete(vlan_settings.vlan);
@@ -347,10 +351,11 @@ void parse_vlan(void)
 		uint8_t w = 2;
 		if (cmd_words_len > w && isletter(cmd_buffer[cmd_words_b[w]])) {
 			register uint8_t i = 0;
+			vlan_name_remove(vlan_settings.vlan);
 			vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 8) & 0xf];
 			vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 4) & 0xf] ;
 			vlan_names[vlan_ptr++] = hex[vlan_settings.vlan & 0xf];
-			while(cmd_buffer[cmd_words_b[w] + i] != ' ') {
+			while(cmd_buffer[cmd_words_b[w] + i] != ' ' && cmd_buffer[cmd_words_b[w] + i] != '\0') {
 				write_char(cmd_buffer[cmd_words_b[w] + i]);
 				vlan_names[vlan_ptr++] = cmd_buffer[cmd_words_b[w] + i++];
 			}
@@ -693,9 +698,9 @@ void parse_port(void)
 	} else if (cmd_compare(2, "duplex")) {
 		print_string(" DUPLEX\n");
 		if (cmd_compare(3, "full"))
-			phy_settings.speed = PHY_DUPLEX_FULL;
+			phy_settings.duplex = PHY_DUPLEX_FULL;
 		else
-			phy_settings.speed = PHY_DUPLEX_HALF;
+			phy_settings.duplex = PHY_DUPLEX_HALF;
 		phy_set_duplex();
 	} else {
 		print_string("Unknown port command\n");
@@ -748,6 +753,64 @@ void sfp_print_measurements(uint8_t sfp)
 }
 
 
+void parse_sfp(void)
+{
+	uint8_t slot;
+
+	if (cmd_words_len != 1 && cmd_words_len != 3)
+		goto err;
+
+	if (cmd_words_len == 1) {
+		for (slot = 0; slot < machine.n_sfp; slot++) {
+			print_string("\nSlot "); write_char('1' + slot);
+			if (gpio_pin_test(machine.sfp_port[slot].pin_detect)) {
+				print_string(" - empty\n");
+				continue;
+			}
+			print_string(" - Rate: "); print_byte(sfp_read_reg(slot, 12));
+			print_string("  Encoding: "); print_byte(sfp_read_reg(slot, 11));
+			write_char('\n');
+			sfp_print_info(slot);
+			sfp_print_measurements(slot);
+		}
+		return;
+	}
+	if (cmd_buffer[cmd_words_b[1]] < '1' || cmd_buffer[cmd_words_b[1]] > '2' || cmd_buffer[cmd_words_b[1] + 1] != ' ' ) {
+		print_string("Illegal SFP slot number\n");
+		return;
+	}
+	slot = cmd_buffer[cmd_words_b[1]] - '1';
+	if (slot >= machine.n_sfp) {
+		print_string("SFP slot not present\n");
+		return;
+	}
+
+	if (cmd_compare(2, "10g")) {
+		print_string(" 10G\n");
+		sfp_speed[slot] = SFP_SPEED_10G;
+	} else if (cmd_compare(2, "2g5")) {
+		print_string(" 2.5G\n");
+		sfp_speed[slot] = SFP_SPEED_2G5;
+	} else if (cmd_compare(2, "1g")) {
+		print_string(" 1G\n");
+		sfp_speed[slot] = SFP_SPEED_1G;
+	} else if (cmd_compare(2, "100m")) {
+		print_string(" 100M\n");
+		sfp_speed[slot] = SFP_SPEED_100M;
+	} else if (cmd_compare(2, "auto")) {
+		print_string(" AUTO\n");
+		sfp_speed[slot] = SFP_SPEED_AUTO;
+	} else {
+		goto err;
+	}
+	sfp_pins_last |= 0x1 << (slot << 2);
+	handle_sfp();
+	return;
+err:
+	print_string("\nUsage:\n\tsfp\n\tsfp [1|2] [1g|2g5|10g]\n");
+}
+
+
 void parse_regget(void)
 {
 	uint16_t reg = 0;
@@ -787,7 +850,7 @@ void parse_regset(void)
 {
 	uint16_t reg = 0;
 
-	if (cmd_words_len != 2) {
+	if (cmd_words_len != 3) {
 		goto err;
 	}
 
@@ -1355,18 +1418,7 @@ void cmd_parser(void) __banked
 			print_string("\nRESET\n\n");
 			reset_chip();
 		} else if (cmd_compare(0, "sfp")) {
-			print_string("\nSlot 1 - Rate: "); print_byte(sfp_read_reg(0, 12));
-			print_string("  Encoding: "); print_byte(sfp_read_reg(0, 11));
-			print_string("\n");
-			sfp_print_info(0);
-			sfp_print_measurements(0);
-			if (machine.n_sfp == 2) {
-				print_string("\nSlot 2 - Rate: "); print_byte(sfp_read_reg(1, 12));
-				print_string("  Encoding: "); print_byte(sfp_read_reg(1, 11));
-				print_string("\n");
-				sfp_print_info(1);
-				sfp_print_measurements(1);
-			}
+			parse_sfp();
 		} else if (cmd_compare(0, "stat")) {
 			port_stats_print();
 		} else if (cmd_compare(0, "flash") && cmd_words_len == 2) {

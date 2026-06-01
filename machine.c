@@ -304,15 +304,19 @@ __code const struct machine machine = {
 	.sfp_port[1].i2c = { .sda = GPIO41_I2C_SDA3_MDIO1, .scl = GPIO40_I2C_SCL3_MDC1 }, /* GPIO 40 */
 	.reset_pin = GPIO54_ACL_BIT2_EN,
 	.high_leds = { .mux = LED_27 | LED_29, .enable = LED_28_SYS | LED_29 },
-	.port_led_set = { 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	.port_led_set = { 0, 0, 0, 1, 0, 0, 0, 0, 1},
 	.led_sets = {
-		{
-			/* Green LED */
+		{ /* RJ45: Green LED */
 			LEDS_1G | LEDS_100M | LEDS_10M | LEDS_LINK | LEDS_ACT | LEDS_10G,
 			0,
 			/* Amber LED */
 			LEDS_2G5 | LEDS_LINK | LEDS_ACT,
 			0
+		}, { /* SFP PORT: SINGLE GREEN LED */
+			LEDS_10M | LEDS_100M | LEDS_1G | LEDS_2G5 | LEDS_10G | LEDS_LINK | LEDS_ACT,
+			0,
+			0,
+			0,
 		},
 	},
 };
@@ -343,15 +347,19 @@ __code const struct machine machine = {
 	.sfp_port[1].i2c = { .sda = GPIO41_I2C_SDA3_MDIO1, .scl = GPIO40_I2C_SCL3_MDC1 }, /* GPIO 40 */
 	.reset_pin = GPIO_NA,
 	.high_leds = { .mux = LED_27 | LED_29, .enable = LED_28_SYS | LED_29 },
-	.port_led_set = { 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	.port_led_set = { 0, 0, 0, 1, 0, 0, 0, 0, 1},
 	.led_sets = {
-		{
-			/* Green LED */
+		{ /* RJ45: Green LED */
 			LEDS_1G | LEDS_100M | LEDS_10M | LEDS_LINK | LEDS_ACT | LEDS_10G,
 			0,
 			/* Amber LED */
 			LEDS_2G5 | LEDS_LINK | LEDS_ACT,
 			0
+		}, { /* SFP PORT: SINGLE GREEN LED */
+			LEDS_10M | LEDS_100M | LEDS_1G | LEDS_2G5 | LEDS_10G | LEDS_LINK | LEDS_ACT,
+			0,
+			0,
+			0,
 		},
 	},
 };
@@ -574,9 +582,9 @@ __code const struct machine machine = {
 
 void machine_custom_init(void) { }
 
-#elif defined MACHINE_HI_K0402WS
+#elif defined(MACHINE_PCB_K0402WS_V3) || defined(MACHINE_HI_K0402WS)  // Sold as a variety of devices, see doc/
 __code const struct machine machine = {
-	.machine_name = "HiSource HI-K0402WS",
+	.machine_name = "PCB-K0402WS-V3.0",
 	.isRTL8373 = 0,
 	.min_port = 3,
 	.max_port = 8,
@@ -815,6 +823,65 @@ void machine_custom_init(void)
 {
     reg_bit_set(RTL837X_REG_LED_GLB_IO_EN, 6);
 }
+
+
+#elif defined MACHINE_PCB_SWTG024AS_A_2_0_1
+__code const struct machine machine = {
+    .machine_name = "PCB-SWTG024AS-A-2.0.1",
+    .isRTL8373 = 0,
+    .min_port = 3,
+    .max_port = 8,
+    .n_sfp = 2,
+    .log_to_phys_port = {0, 0, 0, 5, 1, 2, 3, 4, 6},
+    .phys_to_log_port = {4, 5, 6, 7, 3, 8, 0, 0, 0},
+    .is_sfp = {0, 0, 0, 1, 0, 0, 0, 0, 2},
+
+    // SFP port on SDS0 / logical port 3
+    .sfp_port[0].pin_detect = GPIO37,
+    .sfp_port[0].pin_los = GPIO_NA,
+    .sfp_port[0].pin_tx_disable = GPIO_NA,
+    .sfp_port[0].sds = 0,
+    .sfp_port[0].i2c = { .sda = GPIO41_I2C_SDA3_MDIO1, .scl = GPIO40_I2C_SCL3_MDC1 },
+
+    // SFP port on SDS1 / logical port 8
+    .sfp_port[1].pin_detect = GPIO38,
+    .sfp_port[1].pin_los = GPIO_NA,
+    .sfp_port[1].pin_tx_disable = GPIO_NA,
+    .sfp_port[1].sds = 1,
+    .sfp_port[1].i2c =  { .sda = GPIO39_I2C_SDA4, .scl = GPIO40_I2C_SCL3_MDC1 },
+
+    .reset_pin = GPIO_NA,
+    .high_leds = { .mux =  LED_28_SYS | LED_29, .enable = LED_27 | LED_28_SYS | LED_29 },
+    .port_led_set = { 0, 0, 0, 1, 0, 0, 0, 0, 1},
+    .led_sets = {
+                    {
+                            LEDS_2G5 | LEDS_LINK | LEDS_ACT,
+                            LEDS_1G | LEDS_100M | LEDS_10M | LEDS_LINK | LEDS_ACT,
+                            LEDS_DUPLEX,
+                            LEDS_2G5 | LEDS_LINK | LEDS_ACT
+                    },
+                    {
+                            LEDS_2G5 | LEDS_1G | LEDS_100M | LEDS_LINK | LEDS_ACT,
+                            LEDS_10G | LEDS_LINK | LEDS_ACT,
+                            LEDS_2G5 | LEDS_LINK,
+                            LEDS_COL | LEDS_DUPLEX
+                    },
+     },
+    .led_mux_custom = 1,
+    .led_mux = {
+                            0x00,0x01,0x04,0x05,0x08,0x09,0x0c,0x3f,0x0d,0x10,0x11,0x0e,0x14,0x11,0x12,0x15,0x15,0x16,0x18,0x19,0x1a,0x19,0x1d,0x1e,0x1c,0x1d,0x20,0x21
+            },
+    };
+
+void machine_custom_init(void)
+{
+    reg_bit_set(RTL837X_REG_LED_GLB_IO_EN, 6);
+    reg_bit_set(RTL837X_REG_LED_MODE, 17);
+    reg_bit_clear(RTL837X_REG_LED_MODE, 9);
+    reg_bit_clear(RTL837X_REG_LED_MODE, 7);
+}
+
+
 
 #else
 	#error "Please select a machine type in machine.h"
