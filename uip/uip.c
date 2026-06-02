@@ -1294,7 +1294,7 @@ uip_process(u8_t flag) __banked
        the remote end will retransmit the packet at a time when we
        have more spare connections. */
     UIP_STAT(++uip_stat.tcp.syndrop);
-    UIP_LOG("tcp: found no unused connections.");
+    UIP_LOG("tcp: found no unused connections.\n");
     goto drop;
   }
   uip_conn = uip_connr;
