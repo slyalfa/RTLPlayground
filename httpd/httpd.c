@@ -543,218 +543,240 @@ bad_request:
 	return;
 }
 
-
-void httpd_appcall(void)
+void select_appcall(void)
 {
-	__xdata struct httpd_state * __xdata s = &(uip_conn->appstate);
+        __xdata uint8_t ntsbuf[TCP_OUTBUF_SIZE];
 
-	dbg_char('P');
+        switch(uip_conn->lport) {
+                // NTS
+                case HTONS(10001):
+                        if(uip_newdata() || uip_rexmit()) {
+                                print_string("\n################nts_app###########\n");
+                                //uip_send("ok\n", 3);
+                                //ntsbuf[0] = (__xdata uint8_t)"o";
+                                ntsbuf[0] = 0x4f; // "O"
+                                                  //ntsbuf[1] = (__xdata uint8_t)"k";
+                                ntsbuf[1] = 0x4b; // "K"
+                                                  //ntsbuf[2] = (__xdata uint8_t)"\n";
+                                ntsbuf[2] = 0x0a; // "\n"
+                                uip_send(ntsbuf, 3);
+                        }
+
+                        break;
+                        // httpd
+                case HTONS(80):
+
+                        __xdata struct httpd_state * __xdata s = &(uip_conn->appstate);
+
+                        dbg_char('P');
 #ifdef DEBUG
-	if (uip_newdata())
-		write_char('N');
-	print_byte(s->tstate);
-	write_char(' ');
+                        if (uip_newdata())
+                                write_char('N');
+                        print_byte(s->tstate);
+                        write_char(' ');
 #endif
-	if(uip_connected() && s->tstate == TSTATE_CLOSED) {
-		dbg_string("Connected...\n");
-		s->tstate = TSTATE_NONE;
-	} else if (uip_closed()) {
-		dbg_string("Connection closed\n");
-		s->tstate = TSTATE_CLOSED;
-	} else if (uip_aborted()) {
-		dbg_string("Connection aborted\n");
-		uip_close();
-		s->tstate = TSTATE_CLOSED;
-	} else if (uip_poll()) {
-		uip_len = 0;
-		if (s->tstate == TSTATE_ACKED) {
-			dbg_string("Closing because everything has been transmitted\n");
-			uip_close();
-			s->tstate = TSTATE_CLOSED;
-		}
-	} else if (uip_acked() && s->tstate == TSTATE_TX) {
-		dbg_string("ACK\n");
-		if (slen > uip_mss()) {
-			slen -= uip_mss();
-			o_idx += uip_mss();
-		} else {
-			slen = 0;
-			o_idx += slen;
-		}
+                        if(uip_connected() && s->tstate == TSTATE_CLOSED) {
+                                dbg_string("Connected...\n");
+                                s->tstate = TSTATE_NONE;
+                        } else if (uip_closed()) {
+                                dbg_string("Connection closed\n");
+                                s->tstate = TSTATE_CLOSED;
+                        } else if (uip_aborted()) {
+                                dbg_string("Connection aborted\n");
+                                uip_close();
+                                s->tstate = TSTATE_CLOSED;
+                        } else if (uip_poll()) {
+                                uip_len = 0;
+                                if (s->tstate == TSTATE_ACKED) {
+                                        dbg_string("Closing because everything has been transmitted\n");
+                                        uip_close();
+                                        s->tstate = TSTATE_CLOSED;
+                                }
+                        } else if (uip_acked() && s->tstate == TSTATE_TX) {
+                                dbg_string("ACK\n");
+                                if (slen > uip_mss()) {
+                                        slen -= uip_mss();
+                                        o_idx += uip_mss();
+                                } else {
+                                        slen = 0;
+                                        o_idx += slen;
+                                }
 
-		s->tstate = TSTATE_ACKED;
+                                s->tstate = TSTATE_ACKED;
 
-		if (slen > uip_mss()) {
-			dbg_string("Sending A: "); dbg_short(slen); dbg_char('\n');
-			uip_send(outbuf + o_idx, uip_mss());
-			s->tstate = TSTATE_TX;
-		} else if (slen > 0) {
-			dbg_string("Sending B: "); dbg_short(slen); dbg_char('\n');
-			uip_send(outbuf + o_idx, slen);
-			s->tstate = TSTATE_TX;
-		} else if (cont_len) {
-			dbg_string("CONT cont_len: "); dbg_short(cont_len);
-			slen = cont_len > uip_mss() ? uip_mss() : cont_len;
-			if (slen > TCP_OUTBUF_SIZE)
-				slen = TCP_OUTBUF_SIZE;
-			flash_region.addr = cont_addr;
-			flash_region.len = slen;
-			flash_read_bulk(outbuf);
-			uip_send(outbuf, slen);
-			cont_len -= slen;
-			cont_addr += slen;
-			s->tstate = TSTATE_TX;
-		}
-	} else if (uip_newdata() && s->tstate == TSTATE_POST) {
-		// Check here maxupload by subtracting uip_len and close socekt if fails!
-		if (max_upload - uip_len > 0) {
-			stream_upload(0);
-			write_char('.');
-		} else {
-			send_bad_request();
-			goto do_send;
-		}
-	} else if (uip_newdata() && s->tstate != TSTATE_TX) {
-		cont_len = 0;
-		dbg_char('<'); dbg_short(uip_len); dbg_char('\n');
-		__xdata uint8_t *p = uip_appdata;
-		// Mark end of request header with \0
-		p[uip_len] = 0;
+                                if (slen > uip_mss()) {
+                                        dbg_string("Sending A: "); dbg_short(slen); dbg_char('\n');
+                                        uip_send(outbuf + o_idx, uip_mss());
+                                        s->tstate = TSTATE_TX;
+                                } else if (slen > 0) {
+                                        dbg_string("Sending B: "); dbg_short(slen); dbg_char('\n');
+                                        uip_send(outbuf + o_idx, slen);
+                                        s->tstate = TSTATE_TX;
+                                } else if (cont_len) {
+                                        dbg_string("CONT cont_len: "); dbg_short(cont_len);
+                                        slen = cont_len > uip_mss() ? uip_mss() : cont_len;
+                                        if (slen > TCP_OUTBUF_SIZE)
+                                                slen = TCP_OUTBUF_SIZE;
+                                        flash_region.addr = cont_addr;
+                                        flash_region.len = slen;
+                                        flash_read_bulk(outbuf);
+                                        uip_send(outbuf, slen);
+                                        cont_len -= slen;
+                                        cont_addr += slen;
+                                        s->tstate = TSTATE_TX;
+                                }
+                        } else if (uip_newdata() && s->tstate == TSTATE_POST) {
+                                // Check here maxupload by subtracting uip_len and close socekt if fails!
+                                if (max_upload - uip_len > 0) {
+                                        stream_upload(0);
+                                        write_char('.');
+                                } else {
+                                        send_bad_request();
+                                        goto do_send;
+                                }
+                        } else if (uip_newdata() && s->tstate != TSTATE_TX) {
+                                cont_len = 0;
+                                dbg_char('<'); dbg_short(uip_len); dbg_char('\n');
+                                __xdata uint8_t *p = uip_appdata;
+                                // Mark end of request header with \0
+                                p[uip_len] = 0;
 #ifdef DEBUG
-		while (*p)
-			dbg_char(*p++);
-		dbg_char('\n');
+                                while (*p)
+                                        dbg_char(*p++);
+                                dbg_char('\n');
 #endif
-		p = uip_appdata;
-		if (is_word(p, "POST") || s->tstate == TSTATE_MULTIPART) {
-			handle_post();
-			// If this is an ongoing post stream, then wait for the next packet
-			if (s->tstate == TSTATE_POST || s->tstate == TSTATE_MULTIPART) {
-				uip_len = 0;
-				return;
-			}
-			goto do_send;
-		}
+                                p = uip_appdata;
+                                if (is_word(p, "POST") || s->tstate == TSTATE_MULTIPART) {
+                                        handle_post();
+                                        // If this is an ongoing post stream, then wait for the next packet
+                                        if (s->tstate == TSTATE_POST || s->tstate == TSTATE_MULTIPART) {
+                                                uip_len = 0;
+                                                return;
+                                        }
+                                        goto do_send;
+                                }
 
-		if (is_word(p, "GET"))
-			dbg_string("GET request ");
-		p += 4;
-		scan_header(p);
-		__xdata uint8_t *q = p;
-		while (!is_separator(*p))
-			p++;
-		*p = '\0';
-		dbg_string_x(q);
-		dbg_char('\n');
+                                if (is_word(p, "GET"))
+                                        dbg_string("GET request ");
+                                p += 4;
+                                scan_header(p);
+                                __xdata uint8_t *q = p;
+                                while (!is_separator(*p))
+                                        p++;
+                                *p = '\0';
+                                dbg_string_x(q);
+                                dbg_char('\n');
 
-		s->tstate = TSTATE_NONE;
-		entry = find_entry(q);
-		dbg_string("Entry is: "); dbg_byte(entry); dbg_char('\n');
-		if (entry == 0xff) {
-			if (!authenticated) {
-				dbg_string("Not authorized!\n");
-				send_unauthorized();
-				goto do_send;
-			}
-			dbg_string("Not file entry\n");
-			if (!strcmp(q, "/status.json")) {
-				send_status();
-			} else if (!strcmp(q, "/information.json")) {
-				send_basic_info();
-			} else if (!strcmp(q, "/vlan.json")) {
-				parse_short(q + 15);
-				send_vlan(short_parsed);
-			} else if (is_word(q, "/counters.json")) {
-				send_counters(q[20]-'0');
-			} else if (is_word(q, "/eee.json")) {
-				send_eee();
-			} else if (is_word(q, "/bandwidth.json")) {
-				send_bandwidth();
-			} else if (is_word(q, "/l2.json")) {
-				parse_short(q + 13); // e.g.: /l2.json?idx=10
-				send_l2(short_parsed);
-			} else if (is_word(q, "/l2_del.json")) {
-				parse_short(q + 17);
-				l2_delete(short_parsed);
-			} else if (is_word(q, "/mirror.json")) {
-				send_mirror();
-			} else if (is_word(q, "/mtu.json")) {
-				send_mtu();
-			} else if (is_word(q, "/lag.json")) {
-				send_lag();
-			} else if (is_word(q, "/vlanlist")) {
-				send_vlanlist();
-			} else if (is_word(q, "/config")) {
-				send_config();
-			} else if (is_word(q, "/cmd_log")) {
-				send_cmd_log();
-			} else if (is_word(q, "/cmd_log_clear")) {
-				clear_command_history();
-				send_mtu(); // dummy response
-			} else if (is_word(q, "/reset")) {
-				uip_close();
-				delay(1000); //wait for the close packet to be sent, otherwise the browser will retry
-				reset_chip();
-			} else {
-				send_not_found();
-			}
-		} else {
-			dbg_string("Have entry, authenticated: "); dbg_byte(authenticated); dbg_char('\n');
-			if (!authenticated && !(f_data[entry].start == FDATA_START_login_html 
-						|| f_data[entry].start == FDATA_START_port_svg 
-						|| f_data[entry].start == FDATA_START_sfp_svg
-						|| f_data[entry].start == FDATA_START_style_css)) {
-				send_to_login();
-				goto do_send;
-			}
-			// A web-page is actively accessed, we can reset session time-out
-			reg_read_m(RTL837X_REG_SEC_COUNTER);
-			timeptr = (uint8_t*)&last_session_use; // last_session_use is Little endian
-			timeptr[0] = sfr_data[3]; timeptr[1] = sfr_data[2]; timeptr[2] = sfr_data[1]; timeptr[3] = sfr_data[0];
+                                s->tstate = TSTATE_NONE;
+                                entry = find_entry(q);
+                                dbg_string("Entry is: "); dbg_byte(entry); dbg_char('\n');
+                                if (entry == 0xff) {
+                                        if (!authenticated) {
+                                                dbg_string("Not authorized!\n");
+                                                send_unauthorized();
+                                                goto do_send;
+                                        }
+                                        dbg_string("Not file entry\n");
+                                        if (!strcmp(q, "/status.json")) {
+                                                send_status();
+                                        } else if (!strcmp(q, "/information.json")) {
+                                                send_basic_info();
+                                        } else if (!strcmp(q, "/vlan.json")) {
+                                                parse_short(q + 15);
+                                                send_vlan(short_parsed);
+                                        } else if (is_word(q, "/counters.json")) {
+                                                send_counters(q[20]-'0');
+                                        } else if (is_word(q, "/eee.json")) {
+                                                send_eee();
+                                        } else if (is_word(q, "/bandwidth.json")) {
+                                                send_bandwidth();
+                                        } else if (is_word(q, "/l2.json")) {
+                                                parse_short(q + 13); // e.g.: /l2.json?idx=10
+                                                send_l2(short_parsed);
+                                        } else if (is_word(q, "/l2_del.json")) {
+                                                parse_short(q + 17);
+                                                l2_delete(short_parsed);
+                                        } else if (is_word(q, "/mirror.json")) {
+                                                send_mirror();
+                                        } else if (is_word(q, "/mtu.json")) {
+                                                send_mtu();
+                                        } else if (is_word(q, "/lag.json")) {
+                                                send_lag();
+                                        } else if (is_word(q, "/vlanlist")) {
+                                                send_vlanlist();
+                                        } else if (is_word(q, "/config")) {
+                                                send_config();
+                                        } else if (is_word(q, "/cmd_log")) {
+                                                send_cmd_log();
+                                        } else if (is_word(q, "/cmd_log_clear")) {
+                                                clear_command_history();
+                                                send_mtu(); // dummy response
+                                        } else if (is_word(q, "/reset")) {
+                                                uip_close();
+                                                delay(1000); //wait for the close packet to be sent, otherwise the browser will retry
+                                                reset_chip();
+                                        } else {
+                                                send_not_found();
+                                        }
+                                } else {
+                                        dbg_string("Have entry, authenticated: "); dbg_byte(authenticated); dbg_char('\n');
+                                        if (!authenticated && !(f_data[entry].start == FDATA_START_login_html 
+                                                                || f_data[entry].start == FDATA_START_port_svg 
+                                                                || f_data[entry].start == FDATA_START_sfp_svg
+                                                                || f_data[entry].start == FDATA_START_style_css)) {
+                                                send_to_login();
+                                                goto do_send;
+                                        }
+                                        // A web-page is actively accessed, we can reset session time-out
+                                        reg_read_m(RTL837X_REG_SEC_COUNTER);
+                                        timeptr = (uint8_t*)&last_session_use; // last_session_use is Little endian
+                                        timeptr[0] = sfr_data[3]; timeptr[1] = sfr_data[2]; timeptr[2] = sfr_data[1]; timeptr[3] = sfr_data[0];
 
-			slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: ");
-			slen += strtox(outbuf + slen, mime_strings[f_data[entry].mime]);
-			slen += strtox(outbuf + slen, "; charset=UTF-8\r\nCache-Control: max-age=60, must-revalidate\r\nAccess-Control-Allow-Origin: *\r\nContent-Security-Policy: style-src 'self' 'unsafe-inline'\r\n\r\n");
+                                        slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: ");
+                                        slen += strtox(outbuf + slen, mime_strings[f_data[entry].mime]);
+                                        slen += strtox(outbuf + slen, "; charset=UTF-8\r\nCache-Control: max-age=60, must-revalidate\r\nAccess-Control-Allow-Origin: *\r\nContent-Security-Policy: style-src 'self' 'unsafe-inline'\r\n\r\n");
 
-			len_left = f_data[entry].len;
-			if (len_left > (TCP_OUTBUF_SIZE - slen)) {
-				cont_len = len_left - (TCP_OUTBUF_SIZE - slen);
-				len_left = TCP_OUTBUF_SIZE - slen;
-				cont_addr = f_data[entry].start + len_left;
-			}
-			dbg_string("MIME: "); dbg_string(mime_strings[f_data[entry].mime]); dbg_char('\n');
-			flash_region.addr = f_data[entry].start;
-			flash_region.len = len_left;
-			flash_read_bulk(outbuf + slen);
-			slen += len_left;
-		}
+                                        len_left = f_data[entry].len;
+                                        if (len_left > (TCP_OUTBUF_SIZE - slen)) {
+                                                cont_len = len_left - (TCP_OUTBUF_SIZE - slen);
+                                                len_left = TCP_OUTBUF_SIZE - slen;
+                                                cont_addr = f_data[entry].start + len_left;
+                                        }
+                                        dbg_string("MIME: "); dbg_string(mime_strings[f_data[entry].mime]); dbg_char('\n');
+                                        flash_region.addr = f_data[entry].start;
+                                        flash_region.len = len_left;
+                                        flash_read_bulk(outbuf + slen);
+                                        slen += len_left;
+                                }
 do_send:
-		dbg_string("slen: "); dbg_short(slen); dbg_char('\n');
-		o_idx = 0;
-		if (slen > uip_mss()) {
-			dbg_string("Sending a: "); dbg_short(slen); dbg_char('\n');
-			uip_send(outbuf + o_idx, uip_mss());
-			dbg_string("Sending a done\n");
-		} else {
-			dbg_string("Sending b: "); dbg_short(slen); dbg_char('\n');
-			uip_send(outbuf + o_idx, slen);
-			dbg_string("Sending b done\n");
-		}
-		s->tstate = TSTATE_TX;
-	} else if (uip_rexmit()) { // Connection established, need to rexmit?
-		dbg_string("RETRANSMIT requested\n");
-		if (slen > uip_mss()) {
-			dbg_string("Sending C: "); dbg_short(slen); dbg_char('\n');
-			uip_send(outbuf + o_idx, uip_mss());
-			dbg_string("Sending C done\n");
-		} else if (slen > 0) {
-			dbg_string("Sending D: "); dbg_short(slen); dbg_char('\n');
-			uip_send(outbuf + o_idx, slen);
-			dbg_string("Sending D done\n");
-		}
-		s->tstate = TSTATE_TX;
-		uip_len = 0;
-	} else {
-		uip_len = 0;
-	}
+                                dbg_string("slen: "); dbg_short(slen); dbg_char('\n');
+                                o_idx = 0;
+                                if (slen > uip_mss()) {
+                                        dbg_string("Sending a: "); dbg_short(slen); dbg_char('\n');
+                                        uip_send(outbuf + o_idx, uip_mss());
+                                        dbg_string("Sending a done\n");
+                                } else {
+                                        dbg_string("Sending b: "); dbg_short(slen); dbg_char('\n');
+                                        uip_send(outbuf + o_idx, slen);
+                                        dbg_string("Sending b done\n");
+                                }
+                                s->tstate = TSTATE_TX;
+                        } else if (uip_rexmit()) { // Connection established, need to rexmit?
+                                dbg_string("RETRANSMIT requested\n");
+                                if (slen > uip_mss()) {
+                                        dbg_string("Sending C: "); dbg_short(slen); dbg_char('\n');
+                                        uip_send(outbuf + o_idx, uip_mss());
+                                        dbg_string("Sending C done\n");
+                                } else if (slen > 0) {
+                                        dbg_string("Sending D: "); dbg_short(slen); dbg_char('\n');
+                                        uip_send(outbuf + o_idx, slen);
+                                        dbg_string("Sending D done\n");
+                                }
+                                s->tstate = TSTATE_TX;
+                                uip_len = 0;
+                        } else {
+                                uip_len = 0;
+                        }
+                        break;
+        }
 }

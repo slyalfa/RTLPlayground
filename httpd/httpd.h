@@ -19,7 +19,8 @@ typedef struct httpd_state uip_tcp_appstate_t;
 /* Finally we define the application function to be called by uIP. */
 void httpd_appcall(void);
 #ifndef UIP_APPCALL
-#define UIP_APPCALL httpd_appcall
+//#define UIP_APPCALL httpd_appcall
+#define UIP_APPCALL select_appcall
 #endif /* UIP_APPCALL */
 
 void httpd_init(void) __banked;

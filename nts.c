@@ -1,4 +1,3 @@
-
 #include "nts.h"
 #include <stdint.h>
 #include "rtl837x_sfr.h"
@@ -10,7 +9,7 @@
 
 //#pragma codeseg BANK2
 //#pragma constseg BANK2
-__xdata uint8_t ntsbuf[TCP_OUTBUF_SIZE];
+//__xdata uint8_t ntsbuf[TCP_OUTBUF_SIZE];
 
 #define TSTATE_NONE             0
 #define TSTATE_TX               1
@@ -24,20 +23,7 @@ void nts_init(void)
 {
         __xdata struct nts_state * __xdata s = &(uip_conn->appstate);
         print_string("\n################nts_initi_func###########\n");
-        uip_listen(HTONS(1234));
+        uip_listen(HTONS(10001));
         s->tstate = TSTATE_CLOSED;
-}
-
-void nts_appcall(void) {
-        if(uip_newdata() || uip_rexmit()) {
-                print_string("\n################nts_app###########\n");
-                //uip_send("ok\n", 3);
-                ntsbuf[0] = (__xdata uint8_t)"o";
-                ntsbuf[1] = (__xdata 
-
-                                uint8_t)"k";
-                ntsbuf[2] = (__xdata uint8_t)"\n";
-                uip_send(ntsbuf, 3);
-        }
 }
 

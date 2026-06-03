@@ -14,14 +14,6 @@ struct nts_state {
         uint8_t tstate;
 };
 
-//typedef struct nts_state uip_tcp_appstate_t;
-
-/* Finally we define the application function to be called by uIP. */
-void nts_appcall(void);
-#ifndef UIP_APPCALL
-#define UIP_APPCALL nts_appcall
-#endif /* UIP_APPCALL */
-
 void nts_init(void) ;
 
 #endif
