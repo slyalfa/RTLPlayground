@@ -551,7 +551,21 @@ void select_appcall(void)
                 // NTS
                 case HTONS(10001):
                         if(uip_newdata() || uip_rexmit()) {
+                                //((char *)uip_appdata)[uip_datalen()] = 0;
                                 print_string("\n################nts_app###########\n");
+                                __xdata uint8_t *p = uip_appdata;
+                                // Mark end of request header with \0
+                                p[uip_len] = 0;
+
+                                /*
+                                if (is_word(p, "test"))
+                                                {
+                                                        print_string("\nmatch\n");
+                                                }
+                                write_char_nts(p[0]);
+                                */
+
+                                print_string_x_nts(p);
                                 //uip_send("ok\n", 3);
                                 //ntsbuf[0] = (__xdata uint8_t)"o";
                                 ntsbuf[0] = 0x4f; // "O"
