@@ -42,7 +42,7 @@ void cmd_edit(void) __banked
 		if (sbuf[l] >= ' ' && sbuf[l] < 127) { // A printable character, copy to command line
 			if (cmd_line_len >= CMD_BUF_SIZE)
 				continue;
-			write_char(sbuf[l]);
+			write_char(sbuf[l]); // echo back
 			// Shift buffer to right
 			for (uint8_t i = cmd_line_len; i > cursor; i--)
 				cmd_buffer[i] = cmd_buffer[i-1];

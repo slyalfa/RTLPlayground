@@ -24,10 +24,12 @@
  * Note that key-presses such as <cursor-left> can create multiple
  * keys (3 to 4) being sent via the serial line, so this must be
  * sufficiently large */
-#define SBUF_SIZE 16
+//#define SBUF_SIZE 16
+#define SBUF_SIZE 64
 #define SBUF_MASK (SBUF_SIZE - 1)
 
 extern __xdata volatile uint8_t sbuf_ptr;
+extern __xdata volatile uint8_t sbuf_ptr_tail;
 extern __xdata uint8_t sbuf[SBUF_SIZE];
 
 // Define the command buffer size, Must be 2^x and <= 128
@@ -121,6 +123,7 @@ extern __xdata struct uip_eth_addr uip_ethaddr;
 // Headers for calls in the common code area (HOME/BANK0)
 void print_string_no_syslog(__code char *p);
 void print_string(__code char *p);
+void print_string_nts(__code char *p);
 void print_string_x(__xdata char *p);
 void print_string_x_nts(__xdata char *p);
 void print_long(uint32_t a);

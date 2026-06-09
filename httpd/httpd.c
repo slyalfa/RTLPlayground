@@ -39,7 +39,12 @@ __xdata uint16_t len_left;
 __xdata uint16_t cont_len;
 __xdata uint32_t cont_addr;
 
+// NTS 
+__xdata uint16_t count = 0;
+__xdata uint8_t send_count = 0;
+
 // HTTP header properties
+
 __xdata uint8_t boundary[72];
 __xdata uint8_t *content_type = 0;
 __xdata uint8_t *session = 0;
@@ -550,31 +555,59 @@ void select_appcall(void)
         switch(uip_conn->lport) {
                 // NTS
                 case HTONS(10001):
+                        //    if networks has data blast to serial port
                         if(uip_newdata() || uip_rexmit()) {
                                 //((char *)uip_appdata)[uip_datalen()] = 0;
-                                print_string("\n################nts_app###########\n");
+                                //   print_string_nts("\n################nts_app net to serial ###########\n");
                                 __xdata uint8_t *p = uip_appdata;
                                 // Mark end of request header with \0
                                 p[uip_len] = 0;
-
-                                /*
-                                if (is_word(p, "test"))
-                                                {
-                                                        print_string("\nmatch\n");
-                                                }
-                                write_char_nts(p[0]);
-                                */
-
                                 print_string_x_nts(p);
-                                //uip_send("ok\n", 3);
-                                //ntsbuf[0] = (__xdata uint8_t)"o";
-                                ntsbuf[0] = 0x4f; // "O"
-                                                  //ntsbuf[1] = (__xdata uint8_t)"k";
-                                ntsbuf[1] = 0x4b; // "K"
-                                                  //ntsbuf[2] = (__xdata uint8_t)"\n";
-                                ntsbuf[2] = 0x0a; // "\n"
-                                uip_send(ntsbuf, 3);
                         }
+
+                        if (sbuf_ptr_tail != sbuf_ptr)
+                                 print_string_nts(".");
+                        // check if serial bytes in buffer
+                        while (sbuf_ptr_tail != sbuf_ptr && !send_count)
+                        {
+                                // print_string_nts("\nsbuf print\n");
+
+
+
+                                // copy data to nts buff
+                                ntsbuf[count] = sbuf[sbuf_ptr_tail ];
+                                if (ntsbuf[count] == 0x0d )
+                                        ntsbuf[count] = 0xa;
+
+                                // Echo back
+                                write_char_nts(ntsbuf[count ]); 
+
+                                if (ntsbuf[count] == 0x0a | count > TCP_OUTBUF_SIZE -1 )
+                                        //if (ntsbuf[count] == 0x0d | count > 8)
+                                {
+                                        if(uip_acked())
+                                                print_string_nts("\nsend tx ack\n");
+
+                                        uip_send(ntsbuf, count + 1);
+                                        //    print_string_nts("\nsbuf print\n");
+                                        send_count = 1;
+                                        sbuf_ptr_tail = (sbuf_ptr_tail +1) & (SBUF_SIZE - 1);
+                                        break;
+
+                                }
+                                count ++;
+
+                                // modulo count to SBUF_SIZE
+                                sbuf_ptr_tail = (sbuf_ptr_tail +1) & (SBUF_SIZE - 1);
+                                //ntsbuf[count] = sbuf[sbuf_ptr_tail ];
+                        }
+                         if(uip_acked() && send_count)
+                        {
+                                print_string_nts("\ntx ack b\n");
+                                count = 0;
+                                send_count = 0;
+                        }
+
 
                         break;
                         // httpd

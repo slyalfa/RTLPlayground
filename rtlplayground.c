@@ -291,6 +291,12 @@ void print_string(__code char *p)
                 write_char(*p++);
 }
 
+void print_string_nts(__code char *p)
+{
+        while (*p)
+                write_char_nts(*p++);
+}
+
 void print_string_no_syslog(__code char *p)
 {
         while (*p)
@@ -2153,7 +2159,18 @@ void main(void)
         cmd_editor_init();
 
         while (1) {
-                cmd_edit();
+                // cmd_edit reads serial in console mode
+                if (serial_mux_state == 1)
+                {
+                        //nts_serial_rx();
+
+                        // check state as there may be more options
+                } else if (serial_mux_state == 0)
+
+                {
+
+                        cmd_edit();
+                }
                 idle(); // Enter Idle mode until interrupt occurs
         }
 }
