@@ -102,10 +102,10 @@ __code const struct machine machine = {
                         LEDS_2G5 | LEDS_LINK | LEDS_10G,
 
                         /* LED2 */
-                        LEDS_LINK,
+                        0,
 
                         /* LED3 */
-                       LEDS_LINK 
+                       0 
                 },
         },
 };
