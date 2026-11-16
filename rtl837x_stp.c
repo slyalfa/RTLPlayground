@@ -1398,6 +1398,10 @@ void stp_defaults(void) __banked
 	stp_heard = 0;
 	stp_alt = 0;
 	stp_tc_count = 0;
+	/* Two chips on one board (REM-8x) run a bridge each; the link between
+	 * them is the cheapest there is, so a loop is broken elsewhere */
+	if (machine.peer_link)
+		stp_pcost[machine.phys_to_log_port[machine.peer_link - 1]] = 1;
 	stp_claim_root();
 }
 

@@ -158,6 +158,7 @@ SRCS = \
 	syslog.c \
 	timer.c \
 	udp_apps.c \
+	peer.c \
 	crypto/chacha20.c
 
 # RTL837x

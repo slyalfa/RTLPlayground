@@ -35,6 +35,7 @@
 #include "httpd/page_impl.h"
 #include "boot.h"
 #include "sfp.h"
+#include "peer.h"
 
 extern __code const struct machine machine;
 extern __xdata uint32_t flash_size;
@@ -244,6 +245,10 @@ void write_char_no_syslog(char c)
 	 * printed through print_string_no_syslog() are captured too: those are
 	 * the replies of the syslog commands, which must not generate a syslog
 	 * packet but do belong in the answer to a command sent over HTTP. */
+	if (peer_capture) {
+		peer_mbox_putc(c);
+		return;
+	}
 	if (cmd_capture) {
 		if (slen < TCP_OUTBUF_SIZE - sizeof(CMD_TRUNCATED))
 			outbuf[slen++] = c;
@@ -990,6 +995,8 @@ void handle_rx(void)
 			if (uip_len) {
 				tcpip_output();
 			}
+		} else if (machine.peer_mailbox) {
+			// Managed over I2C by the peer switch: no IP address of its own
 		} else if (ETH_IN->ether_type == HTONS(0x0806)) { // ARP
 			uip_arp_arpin();
 			if (uip_len) {
@@ -1016,6 +1023,8 @@ void handle_rx(void)
 
 void handle_tx(void)
 {
+	if (machine.peer_mailbox)	// No IP, see handle_rx()
+		return;
 	for(uint8_t i = 0; i < UIP_CONNS; i++) {
 		uip_periodic(i);
 		if(uip_len > 0) {
@@ -1252,6 +1261,8 @@ void idle(void)
 			EX1 = 1;
 	}
 	health_phase(HEALTH_PH_RX);
+	if (machine.peer_mailbox)
+		peer_mbox_poll();
 	if (cmd_available) {
 		cmd_available = 0;
 		cmd_tokenize();
@@ -1692,6 +1703,8 @@ void main(void)
 		rtl8372_init();
 	delay(1000);
 	sfp_fixed_init();
+	if (machine.peer_mailbox)
+		peer_mbox_init();
 
 	check_and_flash_update_image();
 

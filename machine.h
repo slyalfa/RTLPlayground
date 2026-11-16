@@ -136,6 +136,18 @@ struct machine {
 	// random resets. Costs management-plane speed only, the ASIC keeps
 	// forwarding in hardware.
 	uint8_t flash_sio;
+	// I2C bus to a second RTL837x on the same board (e.g. REM-8x), wired to that
+	// chip's slave interface strapped for I2C. Built with I2CBUS(sda, scl); only
+	// used when peer_i2c_addr (7-bit, normally 0x5c) is non-zero.
+	uint8_t peer_i2c;
+	uint8_t peer_i2c_addr;
+	// Set on the managed chip of such a pair: answer commands from the peer
+	// through the mailbox in the meter-rate table, see peer.c
+	uint8_t peer_mailbox;
+	// The hardwired link between the pair (set on both chips): our physical
+	// port and the peer's; STP gives it the lowest path cost
+	uint8_t peer_link;
+	uint8_t peer_link_remote;
 };
 
 struct machine_runtime

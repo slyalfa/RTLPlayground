@@ -18,6 +18,7 @@
 #include "page_impl.h"
 #include "syslog.h"
 #include "dhcp.h"
+#include "peer.h"
 
 // #define DEBUG
 #include "debug.h"
@@ -274,6 +275,8 @@ void send_basic_info(void)
 		}
 	}
 	char_to_html('"');
+	peer_info_json();
+
 	char_to_html('}');
 }
 

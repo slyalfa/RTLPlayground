@@ -187,6 +187,10 @@ void send_mirror(void) { }
 void send_config(void) { }
 void send_cmd_log(void) { }
 void send_lag(void) { }
+/* peer.c, two-chip boards: no peer switch here */
+void peer_json_merge(uint8_t *q) { (void)q; }
+bool peer_json_counters(uint8_t port) { (void)port; return true; }
+bool peer_json_raw(uint8_t *path) { (void)path; return true; }
 void send_stp(void) { }
 void send_stp_counters(void) { }
 void send_vlanlist(void) { }

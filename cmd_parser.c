@@ -23,6 +23,7 @@
 #include "rtl837x_cabletest.h"
 #include "sfp.h"
 #include "boot.h"
+#include "peer.h"
 #include "dhcp.h"
 #include "syslog.h"
 #include "sessions.h"
@@ -1234,6 +1235,79 @@ err:
 }
 
 
+/* peer <command line>      run a command on the peer switch (see peer.c)
+ * peerreg <hex:reg> [<hex:val>]   read or write a register of the peer switch
+ *                          directly over I2C, also when its firmware is stuck */
+void parse_peer(void)
+{
+	uint8_t hex_size, offset;
+	uint16_t reg;
+
+	if (cmd_compare(0, "peer")) {
+		if (cmd_words_len < 2) {
+			cmd_error("peer <command>\n\tlike: peer port\n");
+			return;
+		}
+		err_status = peer_cmd(&cmd_buffer[cmd_words_b[1]]);
+		return;
+	}
+
+	if (!machine.peer_i2c_addr) {
+		cmd_error("peerreg: this board has no peer switch\n");
+		return;
+	}
+	if (cmd_words_len < 2 || cmd_words_len > 3)
+		goto err;
+
+	hex_size = atoi_hex(cmd_words_b[1]);
+	if (hex_size == 0 || hex_size > 2)
+		goto err;
+	reg = hexvalue[0];
+	if (hex_size == 2) {
+		reg <<= 8;
+		reg |= hexvalue[1];
+	}
+
+	if (cmd_words_len == 2) {
+		print_string("PEER REGGET: ");
+		print_short(reg);
+		print_string(": ");
+		if (!peer_reg_read_m(reg)) {
+			print_string("I2C error\n");
+			err_status = ERR_INVALID_ARGUMENT;
+			return;
+		}
+		print_string("VAL: ");
+		print_sfr_data();
+		write_char('\n');
+		return;
+	}
+
+	hex_size = atoi_hex(cmd_words_b[2]);
+	if (hex_size == 0 || hex_size > 4)
+		goto err;
+	sfr_set_zero();
+	offset = 4 - hex_size;
+	while (hex_size) {
+		hex_size -= 1;
+		sfr_data[offset + hex_size] = hexvalue[hex_size];
+	}
+	print_string("PEER REGSET: ");
+	print_short(reg);
+	print_string(": VAL: ");
+	print_sfr_data();
+	if (!peer_reg_write_m(reg)) {
+		print_string(" I2C error");
+		err_status = ERR_INVALID_ARGUMENT;
+	}
+	write_char('\n');
+	return;
+
+err:
+	cmd_error("peerreg <hexreg> [<hexval>]\n\tlike: peerreg 4\n");
+}
+
+
 static void print_temperature(uint16_t reg)
 {
 	int16_t v;
@@ -1960,6 +2034,9 @@ void cmd_parser(void) __banked
 	print_byte(cmd_words_b[5]); write_char(' ');
 	print_byte(cmd_words_b[6]); write_char('\n');
 #endif
+	// Two-chip board: ports 7-12 are on the peer chip, see peer_route()
+	if (peer_route())
+		return;
 	if (cmd_words_len >= 1) {
 		if (cmd_compare(0, "reset")) {
 			print_string("\nRESET\n\n");
@@ -2158,6 +2235,11 @@ void cmd_parser(void) __banked
 			parse_regget();
 		} else if (cmd_compare(0, "regset")) {
 			parse_regset();
+		} else if (cmd_compare(0, "peer") || cmd_compare(0, "peerreg")) {
+			parse_peer();
+		} else if (cmd_compare(0, "json") && cmd_words_len == 2) {
+			// json <path>: the answer of a web JSON endpoint, see peer.c
+			err_status = peer_json_local(&cmd_buffer[cmd_words_b[1]]);
 		} else if (cmd_compare(0, "sdstune")) {
 			parse_sdstune();
 		} else if (cmd_compare(0, "sdsget")) {

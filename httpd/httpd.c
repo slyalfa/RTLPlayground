@@ -9,6 +9,7 @@
 #include "timer.h"
 #include "sessions.h"
 #include "html_data.h"
+#include "peer.h"
 
 // #define DEBUG
 #include "debug.h"
@@ -860,6 +861,74 @@ void handle_post(uint16_t body_off)
 }
 
 
+
+/*
+ * The JSON endpoints, for a GET of q (path with query, NUL-terminated).
+ * Builds the answer in outbuf and returns true, or false if q is none of
+ * them. Banked so that the "json" command can run them too, which is how
+ * the managing chip of a two-chip board fetches them from the other one.
+ * On that managing chip the per-port lists get the other chip's ports added.
+ */
+__xdata uint8_t * __xdata http_query;
+
+bool httpd_json(__xdata uint8_t *q) __banked
+{
+	if (!strcmp(q, "/ports.json")) {
+		send_ports();	// Too big to merge, the web interface does it
+	} else if (!strcmp(q, "/traffic.json")) {
+		send_traffic();
+		peer_json_merge(q);
+	} else if (!strcmp(q, "/information.json")) {
+		send_basic_info();
+	} else if (strstart(q, "/peer/")) {
+		if (peer_json_raw(q + 5))
+			send_not_found();
+	} else if (is_word(q, "/vlan.json")) {
+		parse_short(q + 15);
+		send_vlan(short_parsed);
+	} else if (is_word(q, "/counters.json")) {
+		parse_short(q + 20);	// /counters.json?port=<n>
+		uint8_t cport = short_parsed > 99 ? 0 : short_parsed;
+		if (send_counters(cport) && peer_json_counters(cport))
+			send_bad_request();
+	} else if (is_word(q, "/eee.json")) {
+		send_eee();
+		peer_json_merge(q);
+	} else if (is_word(q, "/bandwidth.json")) {
+		send_bandwidth();
+		peer_json_merge(q);
+	} else if (is_word(q, "/storm.json")) {
+		send_storm();	// Too big to merge, the web interface does it
+	} else if (is_word(q, "/l2.json")) {
+		parse_short(q + 13); // e.g.: /l2.json?idx=10
+		send_l2(short_parsed);
+	} else if (is_word(q, "/l2_del.json")) {
+		parse_short(q + 17);
+		l2_delete(short_parsed);
+	} else if (is_word(q, "/mirror.json")) {
+		send_mirror();
+	} else if (is_word(q, "/isolation.json")) {
+		send_isolation();
+		peer_json_merge(q);
+	} else if (is_word(q, "/lag.json")) {
+		send_lag();
+	} else if (is_word(q, "/stp.json")) {
+		send_stp();
+		peer_json_merge(q);
+	} else if (is_word(q, "/lldp.json")) {
+		send_lldp();
+		peer_json_merge(q);
+	} else if (is_word(q, "/stpcnt.json")) {
+		send_stp_counters();
+		peer_json_merge(q);
+	} else if (is_word(q, "/vlanlist.json")) {
+		send_vlanlist();
+	} else {
+		return false;
+	}
+	return true;
+}
+
 static void tx_send(uint16_t len)
 {
 	sent_len = len;
@@ -1006,6 +1075,7 @@ void httpd_appcall(void)
 		__xdata uint8_t *q = p;
 		while (*p && !is_separator(*p))
 			p++;
+		http_query = *p == '?' ? p + 1 : 0;
 		*p = NUL;
 		dbg_string_x(q);
 		dbg_char('\n');
@@ -1020,45 +1090,8 @@ void httpd_appcall(void)
 				goto do_send;
 			}
 			dbg_string("Not file entry\n");
-			if (!strcmp(q, "/ports.json")) {
-				send_ports();
-			} else if (!strcmp(q, "/traffic.json")) {
-				send_traffic();
-			} else if (!strcmp(q, "/information.json")) {
-				send_basic_info();
-			} else if (!strcmp(q, "/vlan.json")) {
-				parse_short(q + 15);
-				send_vlan(short_parsed);
-			} else if (is_word(q, "/counters.json")) {
-				uint8_t cport = q[20] - '0';
-				if (send_counters(cport))
-					send_bad_request();
-			} else if (is_word(q, "/eee.json")) {
-				send_eee();
-			} else if (is_word(q, "/bandwidth.json")) {
-				send_bandwidth();
-			} else if (is_word(q, "/storm.json")) {
-				send_storm();
-			} else if (is_word(q, "/l2.json")) {
-				parse_short(q + 13); // e.g.: /l2.json?idx=10
-				send_l2(short_parsed);
-			} else if (is_word(q, "/l2_del.json")) {
-				parse_short(q + 17);
-				l2_delete(short_parsed);
-			} else if (is_word(q, "/mirror.json")) {
-				send_mirror();
-			} else if (is_word(q, "/isolation.json")) {
-				send_isolation();
-			} else if (is_word(q, "/lag.json")) {
-				send_lag();
-			} else if (is_word(q, "/stp.json")) {
-				send_stp();
-			} else if (is_word(q, "/lldp.json")) {
-				send_lldp();
-			} else if (is_word(q, "/stpcnt.json")) {
-				send_stp_counters();
-			} else if (is_word(q, "/vlanlist.json")) {
-				send_vlanlist();
+			if (httpd_json(q)) {
+				// answered
 			} else if (is_word(q, "/config")) {
 				send_config();
 			} else if (is_word(q, "/cmd_log")) {

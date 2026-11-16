@@ -146,3 +146,6 @@ uint16_t lacp_lag_ports[LACP_NUM_LAGS];
 uint8_t  lacp_agg_sys[LACP_NUM_LAGS][MAC_ADDR_LEN];
 uint8_t  lacp_agg_valid[LACP_NUM_LAGS];
 uint16_t lacp_members_last[LACP_NUM_LAGS];
+
+/* ---- Two-chip boards (peer.c): no peer switch here ---- */
+void peer_info_json(void) { }
