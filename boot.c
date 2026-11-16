@@ -32,6 +32,42 @@ extern __code const uint8_t * __code const hex;
 
 
 
+__xdata struct sds_tune sds_tune[SDS_TUNE_MAX];
+
+
+void sds_tune_clear(void) __banked
+{
+	for (uint8_t i = 0; i < SDS_TUNE_MAX; i++)
+		sds_tune[i].sds = SDS_TUNE_FREE;
+}
+
+
+/* Board-file overrides (machine.sfp_port[].tune) for the slot on this SerDes and
+ * mode first, then the debug overrides from "sdstune", which can replace them. */
+static void sds_tune_apply(uint8_t sds, uint8_t mode)
+{
+	for (uint8_t slot = 0; slot < machine.n_sfp; slot++) {
+		if (machine.sfp_port[slot].sds != sds)
+			continue;
+		for (uint8_t i = 0; i < SFP_TUNE_MAX; i++) {
+			__code const struct sds_reg *t = &machine.sfp_port[slot].tune[i];
+			if (!t->mode || t->mode != mode)
+				continue;
+			sds_write_v(sds, t->page, t->reg, t->val);
+		}
+	}
+
+	for (uint8_t i = 0; i < SDS_TUNE_MAX; i++) {
+		if (sds_tune[i].sds != sds)
+			continue;
+		print_string("sdstune: "); print_byte(sds); write_char(' ');
+		print_byte(sds_tune[i].page); write_char(' '); print_byte(sds_tune[i].reg);
+		write_char(':'); print_short(sds_tune[i].val); write_char('\n');
+		sds_write_v(sds, sds_tune[i].page, sds_tune[i].reg, sds_tune[i].val);
+	}
+}
+
+
 void sds_config_mac(uint8_t sds, uint8_t mode) __banked
 {
 	reg_read_m(RTL837X_REG_SDS_MODES);
@@ -195,6 +231,9 @@ void sds_config(uint8_t sds, uint8_t mode) __banked
 	sds_write_v(sds, page, 0x16, 0x0443); // Q002816:0443 / Q012e16:0443
 	sds_write_v(sds, page, 0x1d, 0xabb0); // Q00281d:abb0 / Q012e1d:abb0
 
+	// Debug overrides: after the speed-specific page, before the steps below
+	sds_tune_apply(sds, mode);
+
 	sds_write_v(sds, 0x06, 0x12, 0x5078); // Q000612:5078
 	sds_write_v(sds, 0x07, 0x06, 0x9401); // Q000706:9401
 	sds_write_v(sds, 0x07, 0x08, 0x9401); // Q000708:9401
@@ -236,6 +275,9 @@ void sds_config(uint8_t sds, uint8_t mode) __banked
 		sds_write_v(sds, 0x20, 0x04, 0x0000); 	// Q002000:0000
 		sds_write_v(sds, 0x1f, 0x00, 0x0000); 	// Q001f00:0000
 	}
+
+	// Again at the end, so overrides of registers written above also stick
+	sds_tune_apply(sds, mode);
 }
 
 

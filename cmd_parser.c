@@ -22,6 +22,7 @@
 #include "rtl837x_trap.h"
 #include "rtl837x_cabletest.h"
 #include "sfp.h"
+#include "boot.h"
 #include "dhcp.h"
 #include "syslog.h"
 #include "sessions.h"
@@ -1303,6 +1304,83 @@ err:
 }
 
 
+/* sdstune                               list overrides
+ * sdstune clear                         remove all overrides
+ * sdstune <sds> <hex:page> <hex:reg> <hex:val>   add or replace an override
+ * Overrides are applied inside sds_config(); re-run it with "sfp <slot> <speed>". */
+void parse_sdstune(void)
+{
+	__xdata uint8_t sds_id, page, reg, hex_size, i, free_slot;
+	__xdata uint16_t val;
+
+	if (cmd_words_len == 2 && cmd_compare(1, "clear")) {
+		sds_tune_clear();
+		print_string("sdstune: cleared\n");
+		return;
+	}
+	if (cmd_words_len == 1) {
+		for (i = 0; i < SDS_TUNE_MAX; i++) {
+			if (sds_tune[i].sds == SDS_TUNE_FREE)
+				continue;
+			print_string("sdstune "); itoa(sds_tune[i].sds);
+			write_char(' '); print_byte(sds_tune[i].page);
+			write_char(' '); print_byte(sds_tune[i].reg);
+			write_char(' '); print_short(sds_tune[i].val); write_char('\n');
+		}
+		return;
+	}
+	if (cmd_words_len != 5)
+		goto err;
+
+	if (!atoi_byte(cmd_words_b[1]))
+		goto err;
+	sds_id = atoi_results_u8;
+	if (sds_id > 2)
+		goto err;
+
+	hex_size = atoi_hex(cmd_words_b[2]);
+	if (hex_size != 1)
+		goto err;
+	page = hexvalue[0];
+
+	hex_size = atoi_hex(cmd_words_b[3]);
+	if (hex_size != 1)
+		goto err;
+	reg = hexvalue[0];
+
+	hex_size = atoi_hex(cmd_words_b[4]);
+	if (hex_size == 0 || hex_size > 2)
+		goto err;
+	val = hexvalue[0];
+	if (hex_size == 2) {
+		val <<= 8;
+		val |= hexvalue[1];
+	}
+
+	free_slot = SDS_TUNE_MAX;
+	for (i = 0; i < SDS_TUNE_MAX; i++) {
+		if (sds_tune[i].sds == sds_id && sds_tune[i].page == page && sds_tune[i].reg == reg)
+			break;
+		if (sds_tune[i].sds == SDS_TUNE_FREE && free_slot == SDS_TUNE_MAX)
+			free_slot = i;
+	}
+	if (i == SDS_TUNE_MAX)
+		i = free_slot;
+	if (i == SDS_TUNE_MAX) {
+		cmd_error("sdstune: table full, use \"sdstune clear\"\n");
+		return;
+	}
+	sds_tune[i].sds = sds_id;
+	sds_tune[i].page = page;
+	sds_tune[i].reg = reg;
+	sds_tune[i].val = val;
+	print_string("sdstune: set, re-run the SerDes setup with \"sfp <slot> <speed>\"\n");
+	return;
+err:
+	cmd_error("sdstune [clear | <sds-id> <hex:page> <hex:reg> <hex:val>]\n");
+}
+
+
 void parse_sdsset(void)
 {
 	__xdata uint8_t sds_id, page, reg, hex_size;
@@ -2063,6 +2141,8 @@ void cmd_parser(void) __banked
 			parse_regget();
 		} else if (cmd_compare(0, "regset")) {
 			parse_regset();
+		} else if (cmd_compare(0, "sdstune")) {
+			parse_sdstune();
 		} else if (cmd_compare(0, "sdsget")) {
 			parse_sdsget();
 		} else if (cmd_compare(0, "sdsset")) {

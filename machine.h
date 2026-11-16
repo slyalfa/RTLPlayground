@@ -77,6 +77,21 @@ struct high_leds {
 	uint8_t reserved : 2;
 };
 
+/*
+ * One SerDes register override from the board file, written inside sds_config()
+ * after its built-in values whenever the SerDes is set up in the given mode.
+ * Use SDS_TUNE(); entries not given in the board file are zero = unused, so the
+ * built-in defaults apply.
+ */
+struct sds_reg {
+	uint8_t mode;	// SDS_* mode this applies to, 0 = unused entry
+	uint8_t page;
+	uint8_t reg;
+	uint16_t val;
+};
+#define SFP_TUNE_MAX	4
+#define SDS_TUNE(m, p, r, v)	{ .mode = (m), .page = (p), .reg = (r), .val = (v) }
+
 struct sfp_port
 {
 	uint8_t pin_detect; // gpio number 0-63, 0xFF = don't have it?
@@ -88,6 +103,9 @@ struct sfp_port
 	// Otherwise an SDS_* mode (e.g. SDS_10GR): the slot is hardwired to a device with
 	// no EEPROM. The SerDes is set to this mode at boot and module detection is skipped.
 	uint8_t fixed_mode;
+	// Optional per-slot SerDes overrides, e.g. to lower the drive on short traces:
+	// .sfp_port[0].tune = { SDS_TUNE(SDS_10GR, 0x2e, 0x15, 0xf2c1) },
+	struct sds_reg tune[SFP_TUNE_MAX];
 };
 
 struct machine {

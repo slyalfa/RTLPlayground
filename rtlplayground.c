@@ -1597,6 +1597,7 @@ void main(void)
 	sfp_pins_last = 0x33; // signal LOS and no module inserted (for both slots, even if only 1 present)
 	// We have not detected any link
 	linkbits_last[0] = linkbits_last[1] = linkbits_last[2] = linkbits_last[3] = linkbits_last_p89 = 0;
+	sds_tune_clear();
 
 	button_last = 0;
 	button_sec_counter_last = 0;
