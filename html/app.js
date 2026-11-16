@@ -2388,22 +2388,22 @@ var CONF_CMDS = [
     /^port\s+\d+\s+lldp\s+(permit|block)+$/,
     /^eee\s+(on|off)(\s+\d+)?(\s+(100m|1g|2g5))?$/,
     /^mirror(\s+\d+)(\s+\d+[tr]?)+$/, /^mirror\s+off$/,
-    /^lag\s+[1-4](\s+\d+)+$/, /^lag\s+[1-4]\s+d$/,
-    /^lag\s+[1-4]\s+lacp(\s+\d+)+$/,
-    /^lag\s+[1-4]\s+lacp\s+off$/,
-    /^laghash\s+[1-4](\s+\w+)+$/,
+    /^lag\s+[1-8](\s+\d+)+$/, /^lag\s+[1-8]\s+d$/,
+    /^lag\s+[1-8]\s+lacp(\s+\d+)+$/,
+    /^lag\s+[1-8]\s+lacp\s+off$/,
+    /^laghash\s+[1-8](\s+\w+)+$/,
     /^isolate\s+\d+(\s+(off|\d+))+$/,
     /^stp\s+(on|off)$/, /^stp\s+(prio|hello|maxage|fwd|txhold)\s+\d+$/,
     /^stp\s+version\s+(rstp|stp)$/,
     /^stp\s+pathcost\s+(long|short)$/,
     /^stp\s+bpdu\s+(filter|flood)$/,
-    /^stp\s+(port\s+\d+|lag\s+[1-4])\s+(on|off)$/,
-    /^stp\s+(port\s+\d+|lag\s+[1-4])\s+edge\s+(on|off|auto)$/,
-    /^stp\s+(port\s+\d+|lag\s+[1-4])\s+cost\s+\d+$/,
-    /^stp\s+(port\s+\d+|lag\s+[1-4])\s+prio\s+\d+$/,
-    /^stp\s+(port\s+\d+|lag\s+[1-4])\s+guard\s+(none|bpdu|root)$/,
-    /^stp\s+(port\s+\d+|lag\s+[1-4])\s+filter\s+(on|off)$/,
-    /^stp\s+(port\s+\d+|lag\s+[1-4])\s+p2p\s+(auto|on|off)$/,
+    /^stp\s+(port\s+\d+|lag\s+[1-8])\s+(on|off)$/,
+    /^stp\s+(port\s+\d+|lag\s+[1-8])\s+edge\s+(on|off|auto)$/,
+    /^stp\s+(port\s+\d+|lag\s+[1-8])\s+cost\s+\d+$/,
+    /^stp\s+(port\s+\d+|lag\s+[1-8])\s+prio\s+\d+$/,
+    /^stp\s+(port\s+\d+|lag\s+[1-8])\s+guard\s+(none|bpdu|root)$/,
+    /^stp\s+(port\s+\d+|lag\s+[1-8])\s+filter\s+(on|off)$/,
+    /^stp\s+(port\s+\d+|lag\s+[1-8])\s+p2p\s+(auto|on|off)$/,
     /^igmp\s+(on|off)$/,
     /^mtu\s+\d+\s+\d+$/,
     /^lldp\s+(on|off)$/,
@@ -2659,8 +2659,11 @@ function byPort(a) {
 function pollStatus() {
     return Promise.all([
         getJSON("/ports.json"),
-        getJSON("/traffic.json")
-    ]).then(function([s,t]) {
+        getJSON("/traffic.json"),
+        peerGet("/ports.json")
+    ]).then(function([s,t,ps]) {
+        /* Two-chip board: the firmware merges traffic.json, ports.json is too big */
+        if (ps[1]) s = s.concat(ps[1]);
         byPort(s);
         byPort(t);
         s = s.map((item,i) => ({ ...item, ...t[i]}));
@@ -3266,6 +3269,21 @@ function stpCnt(c) {
     });
 }
 
+function stpMsg(s) {
+    if (!s.on) return t("stp_off_msg");
+    var me = (s.prio * 4096).toString(16).padStart(4, "0") + s.myMac,
+        tc = parseInt(s.tc),
+        rp = "-";
+    s.ports.forEach(function(pt) {
+        if (pt.role === 1) rp = stpName(pt)
+    });
+    return t("stp_bridge") + " " + fmtBridge(me) + (s.weRoot ?
+            " (" + t("stp_root_self") + ")" :
+            "; " + t("stp_root") + " " + fmtBridge(s.rootPrio + s.rootMac) + " " + t("stp_via") + " " + rp + ", " + t("stp_cost") + " " + parseInt(s.cost)) +
+        "; " + t("stp_tc") + ": " + tc + (tc ? " (" + t("stp_lasttc") + " " + stpDhms(parseInt(s.tcs)) + ")" : "") +
+        "; " + t("stp_times") + " " + s.rMaxage + " / " + s.rFwd + " s";
+}
+
 function stpLoad() {
     return getJSON("/stp.json").then(function(s) {
         s.ports.forEach(stpEnt);
@@ -3282,22 +3300,14 @@ function stpLoad() {
         stpCur = s;
         var en = $("stpen");
         if (document.activeElement !== en) en.checked = s.on;
-        var msg;
-        if (!s.on) msg = t("stp_off_msg");
-        else {
-            var me = (s.prio * 4096).toString(16).padStart(4, "0") + s.myMac,
-                tc = parseInt(s.tc),
-                rp = "-";
-            s.ports.forEach(function(pt) {
-                if (pt.role === 1) rp = stpName(pt)
-            });
-            msg = t("stp_bridge") + " " + fmtBridge(me) + (s.weRoot ?
-                    " (" + t("stp_root_self") + ")" :
-                    "; " + t("stp_root") + " " + fmtBridge(s.rootPrio + s.rootMac) + " " + t("stp_via") + " " + rp + ", " + t("stp_cost") + " " + parseInt(s.cost)) +
-                "; " + t("stp_tc") + ": " + tc + (tc ? " (" + t("stp_lasttc") + " " + stpDhms(parseInt(s.tcs)) + ")" : "") +
-                "; " + t("stp_times") + " " + s.rMaxage + " / " + s.rFwd + " s";
-        }
-        $("stpids").textContent = msg;
+        $("stpids").textContent = stpMsg(s);
+        /* Two-chip board: the second chip runs a bridge of its own */
+        peerGet("/stp.json").then(function(r) {
+            var pi = r[0],
+                ps = r[1];
+            if (ps) ps.ports.forEach(stpEnt);
+            $("stpids2").textContent = pi && ps ? t("c_port") + " " + (pi.ofs + 1) + "-" + 2 * pi.ofs + ": " + stpMsg(ps) : "";
+        });
         var bc = $("stpbridge");
         if (!bc.dataset.dirty) {
             $("stpver").value = s.type;
@@ -3608,6 +3618,78 @@ function rangeStr(list) {
     return parts.join(", ");
 }
 
+/* Two-chip board (REM-8x): the second chip's ports follow the first one's.
+ * The firmware renumbers its port and LAG numbers in /peer/<path>, so the
+ * answers of both chips only need putting together. */
+var peerP = null;
+
+function peerInfo() {
+    if (!peerP) peerP = getJSON("/information.json").then(function(j) {
+        return j.peer || null
+    }).catch(function() {
+        peerP = null;
+        return null
+    });
+    return peerP;
+}
+
+/* [peer info, the peer's answer for path] or nulls */
+function peerGet(path) {
+    return peerInfo().then(function(pi) {
+        if (!pi) return [null, null];
+        return getJSON("/peer" + path).then(function(d) {
+            return [pi, d]
+        }).catch(function() {
+            return [pi, null]
+        });
+    });
+}
+
+function numSort(a) {
+    return a.sort(function(x, y) {
+        return x - y
+    })
+}
+
+/* A VLAN on both chips */
+function vlanGet(vid) {
+    return Promise.all([getJSON("/vlan.json?vid=" + vid), peerGet("/vlan.json?vid=" + vid)]).then(function(r) {
+        var d = r[0],
+            pd = r[1][1];
+        if (pd) ["untagged_members", "tagged_members", "pvid"].forEach(function(k) {
+            d[k] = numSort(d[k].concat(pd[k]))
+        });
+        return d;
+    });
+}
+
+/* Isolation of both chips. Traffic to the other chip goes over the internal
+ * link, so a port that may use it reaches whatever the far end may reach.
+ * The two link ports are one wire: the far one shows as the near one does. */
+function isoMerge(s, pi) {
+    var lo = pi.link,
+        hi = pi.plink + pi.ofs,
+        la = [],
+        ha = [];
+    s.forEach(function(e) {
+        if (e.port === lo) la = e.allow;
+        if (e.port === hi) ha = e.allow;
+    });
+    return s.map(function(e) {
+        var a = e.allow.slice(),
+            far = [];
+        if (e.port <= pi.ofs) {
+            if (a.includes(lo)) far = ha.filter(function(p) { return p > pi.ofs });
+        } else if (a.includes(hi)) {
+            far = la.filter(function(p) { return p >= 1 && p <= pi.ofs });
+        }
+        far.forEach(function(p) {
+            if (!a.includes(p)) a.push(p)
+        });
+        return { port: e.port, allow: a };
+    });
+}
+
 function vlanRefresh() {
     var tb = $("vtable").tBodies[0];
     tb.style = "cursor:pointer;"
@@ -3619,7 +3701,7 @@ function vlanRefresh() {
         var p = Promise.resolve();
         vl.forEach(function(v) {
             p = p.then(function() {
-                return getJSON("/vlan.json?vid=" + v.id).catch(function() {
+                return vlanGet(v.id).catch(function() {
                     return null
                 })
             }).then(function(d) {
@@ -3639,7 +3721,7 @@ function vlanRefresh() {
                 if (!d) {
                     for (var c = 0; c < 4; c++) tr.insertCell().textContent = "?";
                 } else {
-                    tr.insertCell().textContent = rangeStr(d.tagged_members.concat(d.untagged_members).sort());
+                    tr.insertCell().textContent = rangeStr(numSort(d.tagged_members.concat(d.untagged_members)));
                     tr.insertCell().textContent = rangeStr(d.tagged_members);
                     tr.insertCell().textContent = rangeStr(d.untagged_members);
                     tr.insertCell().textContent = rangeStr(d.pvid);
@@ -3768,7 +3850,7 @@ function vlanLoad(vid) {
         toast(t("v_vid_err"), "err");
         return;
     }
-    getJSON("/vlan.json?vid=" + vid).then(function(d) {
+    vlanGet(vid).then(function(d) {
         $("vtitle").innerText = "VLAN " + vid + (d.name ? " (" + (d.name) + ")" : "");
         $("vtitle").dataset.id = vid;
         $("vtitle").dataset.name = d.name;
@@ -4128,7 +4210,11 @@ function buildMirror() {
 }
 
 function mirrorLoad() {
-    return getJSON("/mirror.json").then(function(m) {
+    return Promise.all([getJSON("/mirror.json"), peerGet("/mirror.json")]).then(function(r) {
+        var m = r[0],
+            pm = r[1][1];
+        /* A session is on one chip only, see the "mirror" command */
+        if (!m.enabled && pm && pm.enabled) m = pm;
         $("mstate").textContent = t(m.enabled ? "m_active" : "c_off");
         $("mstate").className = "badge " + (m.enabled ? "ok" : "");
         if (m.enabled) $("mport").value = m.mirrorPort;
@@ -4246,7 +4332,8 @@ function buildIso() {
 }
 
 function isoLoad() {
-    return getJSON("/isolation.json").then(function(s) {
+    return Promise.all([getJSON("/isolation.json"), peerInfo()]).then(function(r) {
+        var s = r[1] ? isoMerge(r[0], r[1]) : r[0];
         isoAllow = s;
         if ($("isotbl").dataset.dirty) return;
         s.forEach(function(e) {
@@ -4316,10 +4403,11 @@ tabHooks.isolate = {
 
 var HASHF = ["spa", "smac", "dmac", "sip", "dip", "sport", "dport"];
 
-function buildLag() {
+/* Two-chip board: groups 5-8 are the second chip's, on its ports only */
+function buildLag(pi) {
     var w = $("lagwrap");
     if (w.children.length) return;
-    for (var g = 1; g <= 4; g++)(function(g) {
+    for (var g = 1; g <= (pi ? 8 : 4); g++)(function(g) {
         var card = h("div", { class: "card" });
         card.appendChild(h("h2", { text: "LAG " + g }));
         var mr = h("div", { style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px", class: "small" });
@@ -4334,7 +4422,8 @@ function buildLag() {
         card.appendChild(mr);
         card.appendChild(h("p", { class: "small mono", id: "lgs" + g, style: "margin-bottom:10px" }));
         var pr = h("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px" });
-        for (var p = 1; p <= S.n; p++) pr.appendChild(h("label", null, [
+        for (var p = 1; p <= S.n; p++)
+            if (!pi || (g > 4) === (p > pi.ofs)) pr.appendChild(h("label", null, [
             h("input", {
                 type: "checkbox",
                 id: "lg" + g + "p" + p
@@ -4359,15 +4448,23 @@ function buildLag() {
         w.appendChild(card);
     })(g);
 }
-var lacpCfg = [0, 0, 0, 0, 0];
+var lacpCfg = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 function lagLoad() {
-    return getJSON("/lag.json").then(function(s) {
+    return Promise.all([getJSON("/lag.json"), peerGet("/lag.json")]).then(function(r) {
+        var s = r[0],
+            ps = r[1][1];
+        if (ps) {
+            s.lags = s.lags.concat(ps.lags);
+            s.ports = s.ports.concat(ps.ports);
+        }
         s.lags.forEach(function(l) {
             var g = l.lagNum + 1;
-            if ($("lgm" + g).closest(".card").dataset.dirty) return;
-            for (var p = 1; p <= S.n; p++)
-                $("lg" + g + "p" + p).checked = l.members.includes(p);
+            if (!$("lgm" + g) || $("lgm" + g).closest(".card").dataset.dirty) return;
+            for (var p = 1; p <= S.n; p++) {
+                var b = $("lg" + g + "p" + p);
+                if (b) b.checked = l.members.includes(p);
+            }
             $("lgm" + g).value = l.type;
             $("lgs" + g).textContent = l.type == "lacp" ? "LACP: " + t("lacp_agg") + " " + (l.valid ? l.aggregator : "(" + t("lacp_neg") + ")") + ", " + t("lacp_members") + " " + l.active_members.join(" ") : "";
             lacpCfg[g] = l.type=="lacp";
@@ -4396,7 +4493,7 @@ function lagApply(g) {
         pre = [];
     delete $("lgm" + g).closest(".card").dataset.dirty;
     for (var p = 1; p <= S.n; p++)
-        if ($("lg" + g + "p" + p).checked) {
+        if ($("lg" + g + "p" + p) && $("lg" + g + "p" + p).checked) {
             cmd += " " + p;
             n++;
         }
@@ -4428,8 +4525,10 @@ var lagPoller = new Poller(function() {
 tabHooks.lag = {
     enter: function() {
         needPorts(function() {
-            buildLag();
-            lagPoller.start()
+            peerInfo().then(function(pi) {
+                buildLag(pi);
+                lagPoller.start()
+            })
         })
     },
     leave: function() {
@@ -4603,8 +4702,9 @@ var SC_TYPES = ["bcast", "mcast", "ucast", "umcast"],
     scSig = "";
 
 function scLoad() {
-    return getJSON("/storm.json").then(function(s) {
-        var tb = $("sctable").tBodies[0];
+    return Promise.all([getJSON("/storm.json"), peerGet("/storm.json")]).then(function(r) {
+        var s = r[1][1] ? r[0].concat(r[1][1]) : r[0],
+            tb = $("sctable").tBodies[0];
         byPort(s);
         var sig = s.map(function(p) {
             return p.port
@@ -5019,10 +5119,10 @@ var CONF_OVERWRITE = [
     /^mirror\b/,
     /^lag\s+\d\b/, /^laghash\s+\d\b/, /^isolate\s+\d{1,2}\b/,
     /^stp\s+(prio|hello|maxage|fwd|txhold|version)\b/,
-    /^stp\s+(port\s+\d{1,2}|lag\s+[1-4])\s+(edge|cost|prio|guard|filter|p2p)\b/,
+    /^stp\s+(port\s+\d{1,2}|lag\s+[1-8])\s+(edge|cost|prio|guard|filter|p2p)\b/,
     /^igmp\b/, /^mtu\s+\d{1,2}\b/, /^storm\s+\d{1,2}\s+(bcast|mcast|ucast|umcast)\b/,
 ];
-var CONF_TOGGLE = [/^(syslog)\s+(on|off)$/, /^(ntp)\s+(on|off)$/, /^(stp)\s+(on|off)$/, /^(lldp)\s+(on|off)$/, /^(stp\s+(port\s+\d{1,2}|lag\s+[1-4]))\s+(on|off)$/];
+var CONF_TOGGLE = [/^(syslog)\s+(on|off)$/, /^(ntp)\s+(on|off)$/, /^(stp)\s+(on|off)$/, /^(lldp)\s+(on|off)$/, /^(stp\s+(port\s+\d{1,2}|lag\s+[1-8]))\s+(on|off)$/];
 
 function mergeConf(base, texts) {
     var conf = base.slice();
