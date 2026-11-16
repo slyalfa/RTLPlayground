@@ -6,7 +6,9 @@ HTML_LOCATION = 262144
 
 # Startup configuration embedded in the image. Override it to build a specific
 # machine with its own configuration: make MACHINE=<name> CONFIG=<file>
-CONFIG ?= config.txt
+# A board-specific config_<MACHINE>.txt is used when it exists (e.g. a
+# different IP per switch), config.txt otherwise.
+CONFIG ?= $(if $(wildcard config_$(MACHINE).txt),config_$(MACHINE).txt,config.txt)
 
 SDCC_TOOLCHAIN = sdcc-$(shell cat sdcc/* | cksum | cut -d' ' -f1)
 SDCC_PREFIX = toolchain/$(SDCC_TOOLCHAIN)
