@@ -2133,6 +2133,23 @@ void cmd_parser(void) __banked
 		} else if (cmd_compare(0, "sds")) {
 			print_reg(RTL837X_REG_SDS_MODES);
 			write_char('\n');
+		} else if (cmd_compare(0, "linkmsg")) {
+			if (cmd_words_len == 2 && cmd_compare(1, "off")) {
+				link_msgs = 0;
+			} else if (cmd_words_len == 2 && cmd_compare(1, "on")) {
+				link_msgs = 1;
+			} else if (cmd_words_len == 2 && cmd_compare(1, "reset")) {
+				link_changes = 0;
+			} else if (cmd_words_len != 1) {
+				cmd_error("linkmsg [on|off|reset]\n");
+			}
+			if (cmd_words_len <= 2) {
+				print_string("Link messages: ");
+				print_string(link_msgs ? "on" : "off");
+				print_string(", link changes: ");
+				print_short(link_changes);
+				write_char('\n');
+			}
 		} else if (cmd_compare(0, "gpio")) {
 			print_gpio_status();
 		} else if (cmd_compare(0, "leds")) {

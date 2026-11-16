@@ -143,6 +143,8 @@ __code const uint16_t bit_mask[16] = {
 __xdata uint8_t linkbits_last[4];
 __xdata uint16_t link_changed;
 __xdata uint8_t linkbits_last_p89;
+__xdata uint8_t link_msgs;		// Print <new link: ...> on the console
+__xdata uint16_t link_changes;		// Link changes seen since boot or "linkmsg reset"
 // The main loop's event flags.
 volatile __bit link_irq;
 volatile __bit rx_irq;
@@ -1115,13 +1117,16 @@ void check_links(void)
 
 	reg_read_m(RTL837X_REG_LINKS);
 	if (cmp_4(sfr_data, linkbits_last) || (linkbits_p89 != linkbits_last_p89)) {
-		print_string("\n<new link: ");
-		print_byte(linkbits_p89); print_byte(sfr_data[0]); print_byte(sfr_data[1]);
-		print_byte(sfr_data[2]); print_byte(sfr_data[3]);
-		print_string(", was ");
-		print_byte(linkbits_last_p89); print_byte(linkbits_last[0]); print_byte(linkbits_last[1]);
-		print_byte(linkbits_last[2]); print_byte(linkbits_last[3]);
-		print_string(">\n");
+		link_changes++;
+		if (link_msgs) {
+			print_string("\n<new link: ");
+			print_byte(linkbits_p89); print_byte(sfr_data[0]); print_byte(sfr_data[1]);
+			print_byte(sfr_data[2]); print_byte(sfr_data[3]);
+			print_string(", was ");
+			print_byte(linkbits_last_p89); print_byte(linkbits_last[0]); print_byte(linkbits_last[1]);
+			print_byte(linkbits_last[2]); print_byte(linkbits_last[3]);
+			print_string(">\n");
+		}
 		linkbits_last_p89 = linkbits_p89;
 		if (!machine_detected.isRTL8373 && machine.n_sfp != 2) {
 			uint8_t p5 = sfr_data[2] >> 4;
@@ -1597,6 +1602,8 @@ void main(void)
 	sfp_pins_last = 0x33; // signal LOS and no module inserted (for both slots, even if only 1 present)
 	// We have not detected any link
 	linkbits_last[0] = linkbits_last[1] = linkbits_last[2] = linkbits_last[3] = linkbits_last_p89 = 0;
+	link_msgs = 1;
+	link_changes = 0;
 	sds_tune_clear();
 
 	button_last = 0;
