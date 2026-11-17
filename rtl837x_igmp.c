@@ -345,6 +345,9 @@ uint8_t igmp_packet_handler(void) __banked
 			do {
 				reg_read_m(RTL837X_TBL_CTRL);
 			} while (sfr_data[3] & 0x1);
+			reg_read_m(RTL837x_TBL_DATA_0);
+			sfr_data[1] &= ~0x04;	// The chip leaves the delete bit set
+			reg_write_m(RTL837x_TBL_DATA_0);
 			print_string("IGMP Entry deleted\n");
 			return 1;
 		}

@@ -179,8 +179,22 @@ static void table_exec(uint32_t ctrl)
 		return;
 
 	uint32_t d0     = regfile[RTL837x_TBL_DATA_0];
-	uint8_t  method = (d0 >> 14) & 0x3;
+	uint8_t  method = (d0 >> 14) & 0x7;
 	bool     clear  = (d0 >> 18) & 1;
+
+	/* Bit 18, measured on silicon: a write deletes the entry at the index in
+	 * TBL_CTRL (not by key), the chip leaves the bit set, and while it is set
+	 * a read finds nothing, so a walk comes back empty. */
+	if (clear) {
+		if (write) {
+			for (int i = 0; i < HW_L2_MAX; i++)
+				if (l2[i].present && l2[i].idx == idx)
+					l2[i].present = false;
+			return;
+		}
+		l2_out(0, 0);
+		return;
+	}
 
 	if (method == TBL_LUTREAD_MAC) {
 		struct hw_l2 key = { .present = true, .a = regfile[RTL837x_TBL_DATA_IN_A],
@@ -189,12 +203,6 @@ static void table_exec(uint32_t ctrl)
 		l2_key(&key, mac, &vid);
 		struct hw_l2 *e = (struct hw_l2 *)hw_l2_find(mac, vid);
 		if (write) {
-			if (clear) {
-				if (e)
-					e->present = false;
-				l2_out(0, 0);
-				return;
-			}
 			if (!e) {
 				e = l2_free();
 				e->idx = l2_hash(mac, vid);

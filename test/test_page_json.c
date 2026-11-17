@@ -147,6 +147,26 @@ static void t_l2(void)
 	CHECK(count("\"mac\":") == 4 && count("44:03") == 2, "and still finds all three before repeating 0x8f0");
 }
 
+/* A delete leaves TBL_DATA_0 bit 18 set, and the chip reads nothing while it
+ * is set (upstream #908): the walk has to clear it, not just set the method. */
+static void t_l2_after_delete(void)
+{
+	printf("[test] /l2.json after a delete\n");
+	hw_reset(); out_reset();
+	put(0x010, 0x01, 1, 4, false);
+	put(0x8f0, 0x03, 1, 7, false);
+	uint8_t m[6];
+	memcpy(m, base_mac, 6);
+	m[5] = 0x09;
+	port_l2_static_mgmt(m, 1, false);
+	port_l2_static_mgmt(m, 1, true);
+	CHECK(hw_l2_count() == 2, "the delete removed only its own entry");
+	hw_reg_set(RTL837x_TBL_DATA_0, hw_reg_get(RTL837x_TBL_DATA_0) | (1u << 18));
+	send_l2(0);
+	CHECK(count("44:01") >= 1 && count("44:03") >= 1, "with bit 18 left set, the walk still lists both entries");
+	CHECK(balanced(), "valid JSON");
+}
+
 /* Walk the table the way the page does: ask for the index after the last
  * entry of each page until an index comes back that was seen before. */
 static void t_l2_page(void)
@@ -227,6 +247,7 @@ int main(void)
 	t_vlanlist();
 	t_l2();
 	t_l2_page();
+	t_l2_after_delete();
 	t_status_counters();
 	t_status_macs();
 	printf("\n%d checks, %d failed\n", tests_run, tests_failed);

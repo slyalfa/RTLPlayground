@@ -130,8 +130,29 @@ static void t_static_mgmt(void)
 	port_l2_static_mgmt(mac, 2, true);
 	CHECK(hw_l2_find(mac, 2) == 0, "removal deletes the VLAN 2 entry");
 	CHECK(hw_l2_find(mac, 1) != 0, "and leaves the other one");
+	CHECK(!(hw_reg_get(RTL837x_TBL_DATA_0) & (1u << 18)), "the delete bit is cleared after removing");
 	port_l2_static_mgmt(mac, 3, true);
 	CHECK(hw_l2_count() == 1, "removing an entry that is not there changes nothing");
+}
+
+/* The chip leaves TBL_DATA_0 bit 18 (delete) set; anything that writes or
+ * walks the table next must clear it (upstream #908). */
+static void t_stale_delete_bit(void)
+{
+	printf("[test] a delete bit left in TBL_DATA_0\n");
+	hw_reset();
+	const uint8_t a[6] = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+	hw_l2_put(0x000, a, 1, 4, false);
+	hw_reg_set(RTL837x_TBL_DATA_0, (1u << 18) | (TBL_LUTREAD_NEXT_L2UC << 14));
+	port_l2mc_set(0x0e, 1, PMASK_CPU);
+	const uint8_t mc[6] = { 0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e };
+	CHECK(hw_l2_find(mc, 1) != 0, "port_l2mc_set adds its entry");
+	CHECK(hw_l2_find(a, 1) != 0, "and does not delete the entry at index 0");
+
+	hw_reg_set(RTL837x_TBL_DATA_0, (1u << 18));
+	out_reset();
+	port_l2_learned();
+	CHECK(strstr(out_buf, "00:11:22:33:44:01") != 0, "the CLI l2 listing still shows the learned entry");
 }
 
 static void t_flush(void)
@@ -174,6 +195,7 @@ int main(void)
 	t_pvid();
 	t_l2mc();
 	t_static_mgmt();
+	t_stale_delete_bit();
 	t_flush();
 	t_lag();
 	printf("\n%d checks, %d failed\n", tests_run, tests_failed);

@@ -378,8 +378,7 @@ void port_l2_learned(void) __banked
 	while (1) {
 		uint8_t port = 0;
 		uint8_t lag;
-		reg_read_m(RTL837x_TBL_DATA_0);
-		REG_WRITE(RTL837x_TBL_DATA_0, sfr_data[0], sfr_data[1],sfr_data[2] | 0xc0, sfr_data[3]);
+		port_l2_tbl_method(TBL_LUTREAD_NEXT_L2UC);
 
 		REG_WRITE(RTL837X_TBL_CTRL, (entry >> 8) & 0xf, entry, TBL_L2_UNICAST, TBL_EXECUTE);
 
@@ -441,6 +440,7 @@ void port_l2_learned(void) __banked
 void port_l2mc_set(uint8_t mac_last, __xdata uint16_t vid, __xdata uint16_t pmask) __banked
 {
 	wait_table_ready();
+	port_l2_tbl_method(TBL_LUTREAD_MAC);	// a write by key, not at an index
 
 	REG_WRITE(RTL837x_TBL_DATA_IN_A, 0xc2, 0x00, 0x00, mac_last);
 	REG_WRITE(RTL837x_TBL_DATA_IN_B, 0x20 | (vid >> 8) | ((pmask & 0x3) << 6), vid, 0x01, 0x80);
@@ -962,11 +962,17 @@ static void l2_mgmt_entry_fill(__xdata uint8_t *mac, __xdata uint16_t vlan)
 	REG_WRITE(RTL837x_TBL_DATA_IN_C, 0x00, 0x01, 0x00, (7 << 2) | (CPU_LOGICAL_PORT >> 2));
 }
 
-static void l2_mgmt_tbl_prepare(void)
+/*
+ * Set the L2 read method (TBL_LUTREAD_*, TBL_DATA_0 bits 16:14) for the next
+ * table operation and clear the delete bit 18. The chip never clears bit 18
+ * itself: left set by a delete, it empties every later read or walk and turns
+ * the next write into a delete.
+ */
+void port_l2_tbl_method(uint8_t method) __banked
 {
 	reg_read_m(RTL837x_TBL_DATA_0);
-	sfr_data[2] &= 0x3f;
-	sfr_data[1] &= 0xf8;
+	sfr_data[1] = (sfr_data[1] & 0xf8) | (method >> 2);
+	sfr_data[2] = (sfr_data[2] & 0x3f) | (uint8_t)(method << 6);
 	reg_write_m(RTL837x_TBL_DATA_0);
 }
 
@@ -980,7 +986,7 @@ void port_l2_static_mgmt(__xdata uint8_t *mac, __xdata uint16_t vlan, __xdata bo
 	if (!vlan)
 		vlan = 1;
 	l2_mgmt_entry_fill(mac, vlan);
-	l2_mgmt_tbl_prepare();
+	port_l2_tbl_method(TBL_LUTREAD_MAC);
 	if (remove_entry) {
 		// a search miss returns index 0, not a slot
 		REG_WRITE(RTL837X_TBL_CTRL, 0x00, 0x00, TBL_L2_UNICAST, TBL_EXECUTE);
@@ -992,6 +998,8 @@ void port_l2_static_mgmt(__xdata uint8_t *mac, __xdata uint16_t vlan, __xdata bo
 		reg_write_m(RTL837x_TBL_DATA_0);
 		__xdata uint16_t idx = (((uint16_t)sfr_data[2] & 0x0f) << 8) | sfr_data[3];
 		REG_WRITE(RTL837X_TBL_CTRL, idx >> 8, idx & 0xff, TBL_L2_UNICAST, TBL_WRITE | TBL_EXECUTE);
+		wait_table_ready();
+		port_l2_tbl_method(TBL_LUTREAD_MAC);
 	} else {
 		// method-0 write: the hardware hashes the key and places the entry
 		REG_WRITE(RTL837X_TBL_CTRL, 0x00, 0x00, TBL_L2_UNICAST, TBL_WRITE | TBL_EXECUTE);
