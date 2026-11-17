@@ -3,6 +3,7 @@
 #include "rtl837x_sfr.h"
 #include "rtl837x_regs.h"
 #include "machine.h"
+#include "timer.h"
 
 extern __code const struct machine machine;
 extern __xdata uint8_t sfr_data[4];
@@ -96,8 +97,14 @@ void gpio_output_setup(uint8_t pin, __xdata uint8_t initial_val) __banked{
 }
 
 
+/* 16 bytes take about 2 ms at 100 kHz; a module holding SDA low never ends */
+#define SFP_I2C_TIMEOUT	(SYS_TICK_HZ / 20)	// 50 ms
+
+static __xdata struct timer sfp_i2c_wait;
+
 /*
- * Read up to 16 consecutive registers of the EEPROM via I2C into sfp_buf
+ * Read up to 16 consecutive registers of the EEPROM via I2C into sfp_buf.
+ * Returns false if the module does not answer or the bus stays busy.
  */
 bool sfp_read_block(uint8_t slot, uint8_t reg, uint8_t len) __banked __reentrant
 {
@@ -108,6 +115,11 @@ bool sfp_read_block(uint8_t slot, uint8_t reg, uint8_t len) __banked __reentrant
 	if (len > 15)
 		return false;
 
+	// Still busy from a transfer that timed out: starting another one would not help
+	reg_read(RTL837X_REG_I2C_CTRL);
+	if (SFR_DATA_0 & I2C_CTRL_GO)
+		return false;
+
 	dev = (reg & 0x80) ? 0x51 : 0x50;	// 0x51 holds the diagnostics, 0x50 the module data
 	reg &= 0x7f;
 
@@ -116,13 +128,18 @@ bool sfp_read_block(uint8_t slot, uint8_t reg, uint8_t len) __banked __reentrant
 	REG_WRITE(RTL837X_REG_I2C_CTRL, 0x00,
 		  0x1 << (I2C_MEM_ADDR_WIDTH - 16) | len,
 		  (dev >> 5) | machine.sfp_port[slot].i2c,
-		  ((dev << 3) & 0xff) | 0x1);
+		  ((dev << 3) & 0xff) | I2C_CTRL_GO);
 
+	timer_set(&sfp_i2c_wait, SFP_I2C_TIMEOUT);
 	do {
 		reg_read(RTL837X_REG_I2C_CTRL);
-	} while (SFR_DATA_0 & 0x1);
+		if (!(SFR_DATA_0 & I2C_CTRL_GO))
+			break;
+		if (timer_expired(&sfp_i2c_wait))
+			return false;	// Bus stuck: give up instead of hanging the switch
+	} while (1);
 
-	if (SFR_DATA_0 & 0x2)
+	if (SFR_DATA_0 & I2C_CTRL_FAIL)
 		return false;
 
 	for (uint8_t i = 0; i <= len; i++) {
