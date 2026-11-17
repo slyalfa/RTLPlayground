@@ -719,13 +719,21 @@ void sfr_set_zero(void) {
 
 
 /*
- * Create 32 random number in sfr_data
+ * Entropy for crypto/rnd.c: each byte is rotated into one pool position after
+ * the other, the next random number keys ChaCha20 with the pool.
  */
-void get_random_32(void)
+__xdata uint8_t rnd_pool[RND_POOL_SIZE];
+__xdata uint8_t rnd_fresh;		// Bytes mixed in since the last key
+static __xdata uint8_t rnd_pos;
+
+void rnd_mix(uint8_t b)
 {
-	// In order to get a new random numner, this bit has to be set each time!
-	reg_bit_set(RTL837X_RLDP_RLPP, RLDP_RND_EN);
-	reg_read_m(RTL837X_RAND_NUM0);
+	uint8_t p = rnd_pool[rnd_pos];
+
+	rnd_pool[rnd_pos] = (uint8_t)((p << 1) | (p >> 7)) ^ b;
+	rnd_pos = (rnd_pos + 1) & (RND_POOL_SIZE - 1);
+	if (rnd_fresh != 0xff)
+		rnd_fresh++;
 }
 
 
@@ -959,6 +967,10 @@ void handle_rx(void)
 			return;
 		}
 		health_rx_frame();
+		/* When a frame arrives is what nobody else knows exactly */
+		rnd_mix(TL2);
+		rnd_mix(TH2 ^ rx_headers[3]);
+		rnd_mix(rx_headers[4] ^ rx_headers[0]);
 
 #ifdef RXTXDBG
 		print_string("\n<< ");
@@ -1761,6 +1773,7 @@ void main(void)
 
 	early_boot_handle_button();
 
+	rnd_init();	// After the boot's variable timing, before DHCP or a session needs it
 	execute_config();
 	// After the config so the entry lands in the final management VLAN
 	port_l2_static_mgmt(uip_ethaddr.addr, management_vlan, false);

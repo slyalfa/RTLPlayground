@@ -199,7 +199,11 @@ bool strstart(__xdata const uint8_t *a, __code const uint8_t *b);
 bool strstart_x(__xdata const uint8_t *a, __xdata const uint8_t *b);
 void tcpip_output(void);
 uint8_t read_flash(uint8_t bank, __code const uint8_t *addr);
-void get_random_32(void);
+/* Random numbers, see crypto/rnd.c */
+#define RND_POOL_SIZE 32
+void rnd_mix(uint8_t b);
+void rnd_init(void) __banked;
+void get_random_32(void) __banked;
 void read_reg_timer(__xdata uint32_t * tmr);
 bool gpio_pin_test(uint8_t pin);
 void set_sys_led_state(uint8_t state);

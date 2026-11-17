@@ -161,7 +161,8 @@ SRCS = \
 	timer.c \
 	udp_apps.c \
 	peer.c \
-	crypto/chacha20.c
+	crypto/chacha20.c \
+	crypto/rnd.c
 
 # RTL837x
 SRCS += \
