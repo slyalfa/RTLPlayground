@@ -94,7 +94,7 @@ extern __xdata uint8_t cmd_words_b[];
 
 /* What a renumbered value is */
 #define JF_PORT			0	// Physical port, 0 is the CPU
-#define JF_LAG			1	// LAG group from 0, 255 is none
+#define JF_LAG			1	// LAG group from 0, 255 is none; jf_lag1: from 1, 0 is none
 
 __xdata uint8_t peer_capture;
 
@@ -105,7 +105,7 @@ __xdata struct timer mbox_timer;
 
 /* Managing side: where the answer goes, see peer_out() */
 __xdata uint8_t peer_to_json;
-__xdata uint8_t jf_state, jf_klen, jf_kind, jf_num, jf_digits, jf_skip, jf_over, jf_raw;
+__xdata uint8_t jf_state, jf_klen, jf_kind, jf_num, jf_digits, jf_skip, jf_over, jf_raw, jf_lag1;
 __xdata char jf_key[16];
 
 /* Managed side; the managing one also builds its "json" requests in it */
@@ -224,7 +224,7 @@ static void jf_flush(void)
 		return;
 	jf_digits = 0;
 	if (jf_kind == JF_LAG) {
-		if (jf_num != 255)
+		if (jf_lag1 ? jf_num != 0 : jf_num != 255)
 			jf_num += PEER_LAGS;
 	} else if (jf_num > 100) {	// LAG 1-4 in STP, 101-104
 		jf_num += PEER_LAGS;
@@ -337,6 +337,8 @@ static bool peer_json_fetch(const char *q)
 	}
 	mbox_req[i] = NUL;
 
+	/* l2.json counts its "lag" from 1, 0 for none; lag.json from 0, 255 for none */
+	jf_lag1 = strstart(mbox_req + 5, "/l2.json");
 	jf_state = JF_NONE;
 	jf_digits = 0;
 	jf_over = 0;
