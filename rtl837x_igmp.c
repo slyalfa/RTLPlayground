@@ -14,6 +14,7 @@
 #include "rtl837x_sfr.h"
 #include "rtl837x_regs.h"
 #include "rtl837x_igmp.h"
+#include "rtl837x_trap.h"
 #include "machine.h"
 
 extern __code const struct machine machine;
@@ -31,11 +32,12 @@ extern __xdata struct machine_runtime machine_detected;
 extern __xdata uint8_t uip_buf[UIP_CONF_BUFFER_ALLOC_SIZE];
 
 __xdata uint16_t idx;
-#define IGMP_IP_HDR		offsetof(struct igmp_pkt, hlen)
 #define IGMP_IP_IHL		0x0f
+#define IGMP_IP_PROTO_OFS	9
 #define IGMP_GROUP_OFS		4
 #define IGMP_V3_RECORD_OFS	8
 
+static __xdata uint8_t igmp_ip;
 static __xdata uint8_t igmp_grp;
 static __xdata uint8_t igmp_join;
 
@@ -60,33 +62,12 @@ struct l2mc_table_entry {
 static __xdata struct l2mc_table_entry entry;
 #endif
 
+/* Only the fixed head of a trapped frame: the IP header behind it moves by
+ * 4 bytes when the report kept an 802.1Q tag, see igmp_packet_handler(). */
 struct igmp_pkt {
 	uint8_t ipv4mc_addr[6];
 	uint8_t src_addr[6];
 	struct rtl_tag rtl_tag;
-	uint16_t ipv4_tag;
-	uint8_t hlen;
-	uint8_t dscp;
-	uint16_t len;
-	uint16_t id;
-	uint16_t flags;
-	uint8_t ttl;
-	uint8_t protocol;
-	uint16_t checksum;
-	uint8_t src_ip[4];
-	uint8_t dst_ip[4];
-	uint8_t ip_opt;
-	uint8_t ip_len;
-	uint16_t ra;
-	uint8_t igmp_type;
-	uint8_t igmp_res1;
-	uint16_t igmp_checksum;
-	uint16_t igmp_res2;
-	uint16_t igmp_records;
-	uint8_t igmp_rtype;
-	uint8_t igmp_auxlen;
-	uint16_t igmp_nsrc;
-	uint8_t mc_ip[4];
 };
 #define IGMP_I ((__xdata struct igmp_pkt *)&uip_buf[0])
 
@@ -210,7 +191,14 @@ void entry_to_l2mc(void)
 
 uint8_t igmp_packet_handler(void) __banked
 {
-	if (IGMP_I->ipv4_tag != HTONS(UIP_ETHTYPE_IP) || IGMP_I->protocol != IGMP_PROTO)
+	/* A trapped report keeps its ingress tagging: untagged, or with the
+	 * 802.1Q tag it arrived with (VID 1, priority tag). Find the EtherType
+	 * behind the RTL tag either way. */
+	igmp_ip = TRAP_RX_BODY();
+	if (uip_buf[igmp_ip] != (UIP_ETHTYPE_IP >> 8) || uip_buf[igmp_ip + 1] != (UIP_ETHTYPE_IP & 0xff))
+		return 0;
+	igmp_ip += 2;
+	if (uip_buf[igmp_ip + IGMP_IP_PROTO_OFS] != IGMP_PROTO)
 		return 0;
 	// By default we do not send anything out
 	uip_len = 0;
@@ -223,7 +211,7 @@ uint8_t igmp_packet_handler(void) __banked
 	}
 	write_char('\n');
 #endif
-	igmp_grp = IGMP_IP_HDR + ((IGMP_I->hlen & IGMP_IP_IHL) << 2);
+	igmp_grp = igmp_ip + ((uip_buf[igmp_ip] & IGMP_IP_IHL) << 2);
 #ifdef DEBUG
 	print_string("Found IGMP, type: "); print_byte(uip_buf[igmp_grp]); write_char('\n');
 #endif
