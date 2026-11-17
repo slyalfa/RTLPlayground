@@ -2902,18 +2902,24 @@ function renderInfo() {
         ["i_hw", "hw_ver"],
         ["i_pcb", "pcb_ver"],
         ["i_temp", "chip_temp"],
+        ["i_temp", "peer_temp"],
         ["i_flash", "flash_size"],
         ["i_syslog", "syslog_server"]
     ];
     var tb = $("sysinfo");
     tb.innerHTML = "";
+    var pi = S.info.peer;
     m.forEach(function(r) {
-        var v = S.info[r[1]];
+        var v = S.info[r[1]],
+            lab = t(r[0]);
         if (r[1] === "uptime") v = fmtUptime(v);
         if (v == null || v === "") return;
+        /* Two-chip board: a temperature for each chip, named by its ports */
+        if (pi && r[1] === "chip_temp") lab += " (" + t("c_port") + " 1-" + pi.ofs + ")";
+        if (pi && r[1] === "peer_temp") lab += " (" + t("c_port") + " " + (pi.ofs + 1) + "-" + 2 * pi.ofs + ")";
         tb.appendChild(h("tr", null, [h("td", {
             class: "mut",
-            text: t(r[0])
+            text: lab
         }), h("td", {
             class: "mono",
             text: String(v)
@@ -2930,7 +2936,9 @@ function renderInfo() {
 }
 
 function pollInfo() {
-    return getJSON("/information.json").then(function(j) {
+    return Promise.all([getJSON("/information.json"), peerGet("/information.json")]).then(function(r) {
+        var j = r[0];
+        if (r[1][1]) j.peer_temp = r[1][1].chip_temp;
         S.info = j;
         renderInfo()
     });
