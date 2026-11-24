@@ -88,6 +88,21 @@
 void lldp_init(void) __banked;
 void lldp_tick(void) __banked;
 void lldp_send(void) __banked;
+
+/* Neighbors, per logical port: what the last LLDPDU received there said,
+ * until its TTL runs out or the link goes down. Strings are cut to fit and
+ * hold printable ASCII only ('"' and '\\' replaced), so JSON can take them. */
+#define LLDP_NB_PORTS		(MACHINE_MAX_PORT + 1)
+#define LLDP_NB_SYS_LEN		20	// System name, or the chassis ID if it is a string
+#define LLDP_NB_PORT_LEN	17	// Port ID (a MAC as aa:bb:cc:dd:ee:ff), else the port description
+extern __xdata uint16_t lldp_nb_ttl[LLDP_NB_PORTS];	// Seconds left, 0 = no neighbor
+extern __xdata char lldp_nb_sys[LLDP_NB_PORTS][LLDP_NB_SYS_LEN + 1];
+extern __xdata char lldp_nb_port[LLDP_NB_PORTS][LLDP_NB_PORT_LEN + 1];
+extern __xdata uint8_t lldp_nb_mac[LLDP_NB_PORTS][6];	// Chassis ID if a MAC, else 0
+extern __xdata uint8_t lldp_nb_ip[LLDP_NB_PORTS][4];	// IPv4 management address, else 0
+void lldp_in(void) __banked;	// A trapped frame to 01:80:c2:00:00:0e in uip_buf
+void lldp_show(void) __banked;	// `lldp show`
+extern __xdata uint8_t lldp_mgmt_ip[4];	// `lldp addr`, 0.0.0.0 = our own address
 void lldp_shutdown(uint16_t ports) __banked;
 void lldp_set_addresses(void) __banked;
 void lldp_set_rtl_wrapper(void) __banked;

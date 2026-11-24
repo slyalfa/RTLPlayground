@@ -2396,7 +2396,20 @@ void cmd_parser(void) __banked
 		} else if (cmd_compare(0, "session")) {
 			parse_session();
 		} else if (cmd_compare(0, "lldp")) {
-			if (cmd_compare(1, "on")) {
+			if (cmd_words_len == 1 || cmd_compare(1, "show")) {
+				lldp_show();
+			} else if (cmd_compare(1, "addr")) {
+				// The management address to announce, if not our own
+				if (cmd_words_len == 3 && cmd_compare(2, "off")) {
+					for (uint8_t i = 0; i < 4; i++)
+						lldp_mgmt_ip[i] = 0;
+				} else if (cmd_words_len == 3 && parse_ip(cmd_words_b[2])) {
+					for (uint8_t i = 0; i < 4; i++)
+						lldp_mgmt_ip[i] = ip[i];
+				} else {
+					cmd_error("lldp addr <a.b.c.d>|off\n");
+				}
+			} else if (cmd_compare(1, "on")) {
 				print_string("LLDP enabled\n");
 				lldp_enabled = 1;
 				trap_rma_set(RTL837X_RMA0E_CONF, RTL837X_RMA_ACT_TRAP);

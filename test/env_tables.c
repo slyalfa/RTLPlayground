@@ -5,6 +5,7 @@
  * Buffers keep their firmware sizes so AddressSanitizer sees the same bounds
  * the 8051 has.
  */
+#include "rtl837x_lldp.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -90,6 +91,11 @@ struct dhcp_state dhcp_state;
 bool     stp_enabled;
 bool lldp_enabled;
 uint16_t lldp_logical_port_status;
+uint16_t lldp_nb_ttl[LLDP_NB_PORTS];
+char     lldp_nb_sys[LLDP_NB_PORTS][LLDP_NB_SYS_LEN + 1];
+char     lldp_nb_port[LLDP_NB_PORTS][LLDP_NB_PORT_LEN + 1];
+uint8_t  lldp_nb_mac[LLDP_NB_PORTS][6];
+uint8_t  lldp_nb_ip[LLDP_NB_PORTS][4];
 
 
 uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;

@@ -145,7 +145,8 @@ var LANG = {
         stp_cost_err: "Path cost must be 0-200000000",
         lldp_enabled: "LLDP Enabled",
         lldp_title: "Service Status",
-        lldp_portname: "Name",
+        lldp_portname: "Port name",
+        lldp_nb: "Neighbor",
         lldp_enable: "Send Frames",
         stp_pcs: "Path cost",
         stp_pcs_long: "Long (32 bit)",
@@ -869,7 +870,8 @@ var LANG = {
         stp_cost_err: "路径开销范围为 0-200000000",
         lldp_enabled: "LLDP 启用",
         lldp_title: "服务状态",
-        lldp_portname: "名称",
+        lldp_portname: "端口名称",
+        lldp_nb: "邻居",
         lldp_enable: "发送帧",
         stp_pcs: "路径开销",
         stp_pcs_long: "长格式 (32 bit)",
@@ -1444,7 +1446,8 @@ var LANG = {
         i_temp: "Temperatura",
         lldp_enabled: "LLDP activado",
         lldp_title: "Estado del servicio",
-        lldp_portname: "Nombre",
+        lldp_portname: "Nombre de puerto",
+        lldp_nb: "Vecino",
         lldp_enable: "Enviar tramas",
         stp_pcs: "Coste de ruta",
         stp_pcs_long: "Largo (32 bits)",
@@ -1666,7 +1669,8 @@ var LANG = {
         stp_cost_err: "Le coût du chemin doit être compris entre 0 et 200000000",
         lldp_enabled: "Activer LLDP",
         lldp_title: "Protocole de découverte de la couche de liason (LLDP)",
-        lldp_portname: "Nom",
+        lldp_portname: "Nom du port",
+        lldp_nb: "Voisin",
         lldp_enable: "Envoi de trames",
         st_title: "Statiqtique du port",
         st_h: "cumul depuis le démarrage",
@@ -2029,7 +2033,8 @@ var LANG = {
         nav_lldp: "LLDP",
         lldp_enabled: "LLDP aktiv",
         lldp_title: "Dienststatus",
-        lldp_portname: "Name",
+        lldp_portname: "Portname",
+        lldp_nb: "Nachbar",
         lldp_enable: "Pakete senden",
         stp_pcs: "Pfadkosten-Format",
         stp_pcs_long: "Lang (32 Bit)",
@@ -4720,6 +4725,19 @@ tabHooks.lag = {
     }
 };
 
+/* A neighbor from LLDP: its name (or chassis MAC), its port, its address */
+function lldpNb(nb) {
+    if (!nb) return h("span", { class: "mut", text: "-" });
+    var name = nb.sys || (nb.mac || "").replace(/(..)(?!$)/g, "$1:"),
+        out = h("span", { title: "TTL " + nb.ttl + " s" }, [h("b", { text: name })]);
+    if (nb.pt) out.appendChild(document.createTextNode(" · " + nb.pt));
+    if (nb.ip && nb.ip !== "0.0.0.0") {
+        out.appendChild(document.createTextNode(" · "));
+        out.appendChild(h("a", { href: "http://" + nb.ip + "/", target: "_blank", rel: "noopener", text: nb.ip }));
+    }
+    return out;
+}
+
 function lldpLoad() {
     return getJSON("/lldp.json").then(function(s) {
         $("lldp_en").checked = s.on;
@@ -4729,6 +4747,7 @@ function lldpLoad() {
             var tr = tb.insertRow();
             tr.insertCell().textContent = p.port;
             tr.insertCell().textContent = p.name;
+            tr.insertCell().appendChild(lldpNb(p.nb));
             var sw = h("label", {
                 class: "switch"
             }, [

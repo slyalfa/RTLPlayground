@@ -41,6 +41,7 @@
 #include "peer.h"
 #include "httpd/httpd.h"
 #include "httpd/page_impl.h"
+#include "uip.h"
 
 #pragma codeseg BANK4
 #pragma constseg BANK4
@@ -299,8 +300,12 @@ static void jf_putc(uint8_t c)
 }
 
 
+__xdata uint8_t peer_quiet;	// peer_cmd() shows no output and no errors
+
 static void peer_out(uint8_t c)
 {
+	if (peer_quiet)
+		return;
 	if (peer_to_json)
 		jf_putc(c);
 	else
@@ -514,7 +519,8 @@ uint8_t peer_cmd(__xdata uint8_t *line) __banked
 		len -= n;
 		if (!peer_ctrl(len ? MBOX_OP_REQ : MBOX_OP_REQ_LAST, n))
 			goto i2c_err;
-		op = peer_stat_wait(len ? MBOX_STEP_TIMEOUT : MBOX_RUN_TIMEOUT);
+		// A quiet background command is short: don't stall for the long timeout
+		op = peer_stat_wait(len || peer_quiet ? MBOX_STEP_TIMEOUT : MBOX_RUN_TIMEOUT);
 	} while (len && op == MBOX_OP_ACK);
 
 	while (op == MBOX_OP_RESP || op == MBOX_OP_RESP_END || op == MBOX_OP_RESP_ERR) {
@@ -537,6 +543,8 @@ uint8_t peer_cmd(__xdata uint8_t *line) __banked
 		op = peer_stat_wait(MBOX_STEP_TIMEOUT);
 	}
 
+	if (peer_quiet)
+		return ERR_INVALID_ARGUMENT;
 	if (op == MBOX_OP_REJECT)
 		print_string("\npeer: request rejected (too long?)\n");
 	else
@@ -544,7 +552,8 @@ uint8_t peer_cmd(__xdata uint8_t *line) __banked
 	return ERR_INVALID_ARGUMENT;
 
 i2c_err:
-	print_string("\npeer: I2C error\n");
+	if (!peer_quiet)
+		print_string("\npeer: I2C error\n");
 	return ERR_INVALID_ARGUMENT;
 }
 
@@ -1020,3 +1029,40 @@ uint8_t peer_json_local(__xdata uint8_t *q) __banked
 	slen = save;
 	return ERR_OK;
 }
+
+
+/*
+ * LLDP: High has no IP address of its own (see handle_rx()), so it announces
+ * ours as the management address of the switch: "lldp addr <our IP>" on
+ * High, quietly, whenever we send LLDP ourselves. That also covers a reboot
+ * of High and a new address of ours from DHCP.
+ */
+void peer_lldp_addr(void) __banked
+{
+	static __code const char * __xdata s;
+	__xdata uint8_t i, b;
+
+	if (!machine.peer_i2c_addr)
+		return;
+	s = "lldp addr ";
+	r_hi = 1;
+	route_hi_n = 0;
+	while (*s)
+		r_char(*s++);
+	for (i = 0; i < 4; i++) {
+		b = ((__xdata uint8_t *)uip_hostaddr)[i];
+		if (b >= 100)
+			r_char('0' + b / 100);
+		if (b >= 10)
+			r_char('0' + (b / 10) % 10);
+		r_char('0' + b % 10);
+		if (i < 3)
+			r_char('.');
+	}
+	route_hi[route_hi_n] = NUL;
+	peer_quiet = 1;
+	peer_cmd(route_hi);
+	peer_quiet = 0;
+}
+
+

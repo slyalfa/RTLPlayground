@@ -11,6 +11,7 @@ extern __xdata uint8_t peer_capture;
 bool peer_reg_read_m(uint16_t reg) __banked;
 bool peer_reg_write_m(uint16_t reg) __banked;
 uint8_t peer_cmd(__xdata uint8_t *line) __banked;
+void peer_lldp_addr(void) __banked;	// High announces our IP over LLDP
 void peer_json_merge(__xdata uint8_t *q) __banked;
 bool peer_json_counters(uint8_t port) __banked;
 bool peer_json_raw(__xdata uint8_t *path) __banked;

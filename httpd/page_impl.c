@@ -13,6 +13,7 @@
 #include "phy.h"
 #include "version.h"
 #include "machine.h"
+#include "rtl837x_lldp.h"
 #include "rtl837x_stp.h"
 #include "rtl837x_lacp.h"
 #include "page_impl.h"
@@ -658,6 +659,31 @@ void send_lag(void)
 	char_to_html('}');
 }
 
+/* The neighbor on logical port i: "nb":{"sys","pt","mac","ip","ttl"} */
+static void lldp_nb_json(uint8_t i)
+{
+	uint8_t j;
+
+	str_code_to_html("," JSONQUOTE("nb") ":{" JSONQUOTE("sys") ":\"");
+	for (j = 0; lldp_nb_sys[i][j]; j++)
+		json_char_to_html(lldp_nb_sys[i][j]);
+	str_code_to_html("\"," JSONQUOTE("pt") ":\"");
+	for (j = 0; lldp_nb_port[i][j]; j++)
+		json_char_to_html(lldp_nb_port[i][j]);
+	str_code_to_html("\"," JSONQUOTE("mac") ":\"");
+	for (j = 0; j < 6; j++)
+		byte_to_html(lldp_nb_mac[i][j]);
+	str_code_to_html("\"," JSONQUOTE("ip") ":\"");
+	for (j = 0; j < 4; j++) {
+		itoa_html(lldp_nb_ip[i][j]);
+		if (j < 3)
+			char_to_html('.');
+	}
+	str_code_to_html("\"," JSONQUOTE("ttl") ":");
+	itoa16_html(lldp_nb_ttl[i]);
+	char_to_html('}');
+}
+
 void send_lldp(void)
 {
 	dbg_string("send_lldp called\n");
@@ -678,6 +704,8 @@ void send_lldp(void)
 
 		str_code_to_html("\"," JSONQUOTE("permitted") ":");
 		bool_to_json(1 & (lldp_logical_port_status >> i));
+		if (lldp_nb_ttl[i])
+			lldp_nb_json(i);
 		char_to_html('}');
 
 		if (i < MACHINE_MAX_PORT)
