@@ -265,16 +265,25 @@ uint8_t atoi_short(uint8_t idx)
  * Store the value in atoi_results_u8.
  */
 uint8_t cmd_parse_port(uint8_t idx) {
-	uint8_t port = cmd_buffer[idx] - '0' - 1;
-	if (port > 8)
+	uint8_t phys = cmd_buffer[idx] - '0', n = 1, port;
+	if (phys > 9)
+		return 0;
+#if MACHINE_PHYS_PORTS > 9
+	if ((uint8_t)(cmd_buffer[idx + 1] - '0') <= 9) {
+		phys = phys * 10 + cmd_buffer[idx + 1] - '0';
+		n = 2;
+	}
+#endif
+	if (!phys || phys > MACHINE_PHYS_PORTS)
 		return 0;
 
-	port = machine.phys_to_log_port[port];
-	if (!MACHINE_PORT_VALID(port))
+	port = machine.phys_to_log_port[phys - 1];
+	// The tables must agree: a gap in the numbering maps to logical port 0
+	if (!MACHINE_PORT_VALID(port) || machine.log_to_phys_port[port] != phys)
 		return 0;
 
 	atoi_results_u8 = port;
-	return 1;
+	return n;
 }
 
 
@@ -819,7 +828,7 @@ void parse_ingress(void)
 		for(uint8_t w = 1; w < cmd_words_len; w++) {
 			idx = cmd_words_b[w];
 			uint8_t ret = cmd_parse_port(idx);
-			if (ret != 1) {
+			if (!ret) {
 				cmd_error("Invalid physical port number\n");
 				continue;
 			}
@@ -2133,7 +2142,7 @@ void cmd_parser(void) __banked
 	print_byte(cmd_words_b[5]); write_char(' ');
 	print_byte(cmd_words_b[6]); write_char('\n');
 #endif
-	// Two-chip board: ports 7-12 are on the peer chip, see peer_route()
+	// Two-chip board: High's ports are on the peer chip, see peer_route()
 	if (peer_route())
 		return;
 	if (cmd_words_len >= 1) {

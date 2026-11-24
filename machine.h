@@ -50,6 +50,12 @@
 #define MACHINE_PORT_VALID(p) \
 	((uint8_t)((p) - MACHINE_MIN_PORT) <= (MACHINE_MAX_PORT - MACHINE_MIN_PORT))
 
+/* Highest front-panel port number. A two-chip board (REM-8x) numbers the
+ * ports of both chips as one switch, so each chip's numbers go up to 12. */
+#ifndef MACHINE_PHYS_PORTS
+#define MACHINE_PHYS_PORTS 9
+#endif
+
 // auto derive SOC_FAMILY
 #define RTL836X 6
 #define RTL837X 7
@@ -114,7 +120,7 @@ struct machine {
 	uint8_t n_sfp;
 	uint8_t n_10g;
 	uint8_t log_to_phys_port[9];
-	uint8_t phys_to_log_port[9]; // Starts at 0 for port 1
+	uint8_t phys_to_log_port[MACHINE_PHYS_PORTS]; // Starts at 0 for port 1, 0 = not ours if log_to_phys_port disagrees
 	uint8_t is_sfp[9];  // 0 for non-SFP ports 1 or 2 for the I2C port number
 	// sfp_port[0] is the first SFP-port from the left on the device, sfp_port[1] the next if present 
 	struct sfp_port sfp_port[2];

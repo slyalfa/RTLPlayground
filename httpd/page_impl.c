@@ -347,9 +347,11 @@ void send_vlan(uint16_t vlan)
 bool send_counters(uint8_t phys_port)
 {
 	uint8_t phys_port_idx = phys_port - 1;
-	if (phys_port_idx > (MACHINE_MAX_PORT - MACHINE_MIN_PORT))
+	if (phys_port_idx >= MACHINE_PHYS_PORTS)
 		goto err;
 	uint8_t log_port = machine.phys_to_log_port[phys_port_idx];
+	if (!MACHINE_PORT_VALID(log_port) || machine.log_to_phys_port[log_port] != phys_port)
+		goto err;
 
 	dbg_string("send_counters called: "); dbg_byte(phys_port_idx); dbg_char('\n');
 	slen = strtox(outbuf, HTTP_RESPONSE_JSON);
@@ -914,6 +916,8 @@ void send_ports(void)
 
 		if (machine.is_sfp[i]) {
 			uint8_t sfp = machine.is_sfp[i] - 1;
+			str_code_to_html("," JSONQUOTE("slot") ":");	// For "sfp <slot>"
+			char_to_html('1' + sfp);
 			str_code_to_html("," JSONQUOTE("isSFP") ":true," JSONQUOTE("enabled") ":");
 			if (!(sfp_pins_last & (0x1 << (sfp << 2)))) {
 				bool_to_json(1);

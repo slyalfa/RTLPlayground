@@ -68,7 +68,7 @@ void storm_show(void) __banked
 
 	for (i = MACHINE_MIN_PORT; i <= MACHINE_MAX_PORT; i++) {
 		print_string("port ");
-		write_char('0' + machine.log_to_phys_port[i]);
+		itoa(machine.log_to_phys_port[i]);
 		for (t = 0; t < STORM_TYPES; t++) {
 			print_string(storm_names[t]);
 			if (!reg_bit_test(RTL837X_STORM_CTRL + (t << 2), i)) {

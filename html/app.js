@@ -261,6 +261,7 @@ var LANG = {
         e_note: "Advertised and link-partner flags per speed: 100M, 1G, 2.5G. SFP ports do not support EEE.",
         e_idle: "idle",
         nav_poe: "PoE",
+        c_bp: "Backplane",
         poe_title: "Power over Ethernet",
         poe_sum: "{chip}: firmware {fw}, supply {v} V, {t} °C, delivering {w} W",
         poe_nofw: "{chip}: no firmware running, see doc/poe-tps23880.md",
@@ -616,6 +617,7 @@ var LANG = {
         e_note: "速度ごとのアドバタイズ/リンクパートナーのフラグ: 100M、1G、2.5G。SFP ポートは EEE に対応していません。",
         e_idle: "アイドル",
         nav_poe: "PoE",
+        c_bp: "バックプレーン",
         poe_title: "PoE 給電",
         poe_enable: "有効",
         poe_state: "状態",
@@ -982,6 +984,7 @@ var LANG = {
         e_note: "按速率显示本端/链路伙伴的通告标志: 100M、1G、2.5G。SFP 端口不支持 EEE。",
         e_idle: "空闲",
         nav_poe: "PoE",
+        c_bp: "背板",
         poe_title: "以太网供电",
         poe_enable: "启用",
         poe_state: "状态",
@@ -1331,6 +1334,7 @@ var LANG = {
         e_note: "Banderas anunciadas y del socio de enlace por velocidad: 100M, 1G, 2.5G. Los puertos SFP no soportan EEE.",
         e_idle: "inactivo",
         nav_poe: "PoE",
+        c_bp: "Plano posterior",
         poe_title: "Alimentación por Ethernet",
         poe_enable: "Activar",
         poe_state: "Estado",
@@ -1742,6 +1746,7 @@ var LANG = {
         e_note: "Capacité de l'hôte et des partenaires : 100M, 1G, 2.5G. Les ports SFP ne peuvent pas bénéficier de l'EEE.",
         e_idle: "Inactif",
         nav_poe: "PoE",
+        c_bp: "Fond de panier",
         poe_title: "Alimentation par Ethernet",
         poe_enable: "Activer",
         poe_state: "État",
@@ -2141,6 +2146,7 @@ var LANG = {
         e_note: "Angebotene und von der Gegenstelle unterstützte Stufen je Geschwindigkeit: 100M, 1G, 2.5G. SFP-Ports unterstützen kein EEE.",
         e_idle: "inaktiv",
         nav_poe: "PoE",
+        c_bp: "Backplane",
         poe_title: "Power over Ethernet",
         poe_enable: "Aktiv",
         poe_state: "Status",
@@ -2745,7 +2751,8 @@ function pollStatus() {
         peerGet("/ports.json")
     ]).then(function([s,t,ps]) {
         /* Two-chip board: the firmware merges traffic.json, ports.json is too big */
-        if (ps[1]) s = s.concat(ps[1]);
+        S.pi = ps[0];
+        if (ps[1]) s = s.concat(ps[1].map(function(p) { return Object.assign(p, { hi: 1 }) }));
         byPort(s);
         byPort(t);
         s = s.map((item,i) => ({ ...item, ...t[i]}));
@@ -2753,11 +2760,13 @@ function pollStatus() {
         var now = Date.now();
         if (!S.n) {
             S.n = s.length;
-            var slot = 0;
+            var slot = 0,
+                nlo = s.filter(function(p) { return p.isSFP && !p.hi }).length;
             s.forEach(function(p) {
                 if (p.isSFP) {
                     slot++;
-                    S.sfpSlot[p.port - 1] = slot;
+                    /* "sfp <slot>": the firmware says which; High's follow Low's */
+                    S.sfpSlot[p.port - 1] = p.slot ? p.slot + (p.hi ? nlo : 0) : slot;
                 }
             });
             buildStrip();
@@ -2822,7 +2831,9 @@ function fmtPps(v) {
 }
 
 function portLabel(p) {
-    return p.name ? p.port + " " + p.name : String(p.port)
+    var bp = backplane(),
+        name = p.name || (bp && bp.indexOf(p.port) >= 0 ? t("c_bp") : "");
+    return name ? p.port + " " + name : String(p.port)
 }
 
 function portTip(i) {
@@ -2845,11 +2856,45 @@ function portTip(i) {
     })
 });
 
+/* Two-chip board: the two ends of the internal link are one backplane */
+function backplane() {
+    var pi = S.pi;
+    return pi && pi.link && pi.plink ? [Math.min(pi.link, pi.plink), Math.max(pi.link, pi.plink)] : null;
+}
+
 function buildStrip() {
-    var st = $("strip");
+    var st = $("strip"),
+        bp = backplane();
     st.innerHTML = "";
     for (var i = 0; i < S.n; i++)(function(i) {
         var p = S.ports[i] || {};
+        if (bp && i + 1 === bp[1]) return;	// drawn with bp[0]
+        if (bp && i + 1 === bp[0]) {
+            st.appendChild(h("div", {
+                class: "port sfp bp",
+                id: "pp" + i,
+                title: t("c_bp") + " " + bp[0] + "+" + bp[1],
+                onclick: function() {
+                    portDetail(i)
+                },
+                onpointerenter: function(e) {
+                    if (e.pointerType !== "touch") portTip(i)
+                },
+                onpointerleave: portTip
+            }, [
+                h("span", {
+                    class: "pn",
+                    text: bp[0] + "+" + bp[1]
+                }),
+                h("span", { class: "bpj" }, [h("i", { class: "jack" }), h("i", { class: "jack" })]),
+                h("span", {
+                    class: "ps",
+                    id: "ppl" + i,
+                    text: t("c_bp")
+                }),
+            ]));
+            return;
+        }
         st.appendChild(h("div", {
             class: "port" + (p.isSFP ? " sfp" : ""),
             id: "pp" + i,
@@ -2890,7 +2935,7 @@ function updateStrip() {
         var up = p.enabled && p.link != "DOWN";
         el.classList.toggle("up", !!up);
         if (up) el.style.setProperty("--pc", "var(" + "--s" + p.link.replace(/\-[HF]D$/,"").replace("2.5G","2G5").toLowerCase() + ")");
-        lb.textContent = !p.enabled ? t("c_off") : (p.link != "DOWN" ? p.link : t("c_down"));
+        lb.textContent = !p.enabled ? t("c_off") : (p.link != "DOWN" ? (el.classList.contains("bp") ? t("c_bp") : p.link) : t("c_down"));
     });
     if (S.tip != null) portTip(S.tip);
     if (S.detail != null) {
@@ -3026,8 +3071,8 @@ function renderInfo() {
         if (r[1] === "uptime") v = fmtUptime(v);
         if (v == null || v === "") return;
         /* Two-chip board: a temperature for each chip, named by its ports */
-        if (pi && r[1] === "chip_temp") lab += " (" + t("c_port") + " 1-" + pi.ofs + ")";
-        if (pi && r[1] === "peer_temp") lab += " (" + t("c_port") + " " + (pi.ofs + 1) + "-" + 2 * pi.ofs + ")";
+        if (pi && r[1] === "chip_temp") lab += " (" + t("c_port") + " " + chipPorts(pi, 1) + ")";
+        if (pi && r[1] === "peer_temp") lab += " (" + t("c_port") + " " + chipPorts(pi, 0) + ")";
         tb.appendChild(h("tr", null, [h("td", {
             class: "mut",
             text: lab
@@ -3426,7 +3471,7 @@ function stpLoad() {
             var pi = r[0],
                 ps = r[1];
             if (ps) ps.ports.forEach(stpEnt);
-            $("stpids2").textContent = pi && ps ? t("c_port") + " " + (pi.ofs + 1) + "-" + 2 * pi.ofs + ": " + stpMsg(ps) : "";
+            $("stpids2").textContent = pi && ps ? t("c_port") + " " + chipPorts(pi, 0) + ": " + stpMsg(ps) : "";
         });
         var bc = $("stpbridge");
         if (!bc.dataset.dirty) {
@@ -3765,6 +3810,25 @@ function peerGet(path) {
     });
 }
 
+/* Is port p on the managing (Low) chip */
+function isLo(pi, p) {
+    return pi.lo.indexOf(p) >= 0
+}
+
+/* The ports of one chip as text, "1-4, 9, 11" */
+function chipPorts(pi, lo) {
+    var a = [], n = Math.max(S.n || 0, 2 * pi.lo.length), out = [];
+    for (var p = 1; p <= n; p++)
+        if (isLo(pi, p) === !!lo) a.push(p);
+    for (var i = 0; i < a.length; i++) {
+        var j = i;
+        while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++;
+        out.push(j > i ? a[i] + "-" + a[j] : String(a[i]));
+        i = j;
+    }
+    return out.join(", ");
+}
+
 function numSort(a) {
     return a.sort(function(x, y) {
         return x - y
@@ -3788,7 +3852,7 @@ function vlanGet(vid) {
  * The two link ports are one wire: the far one shows as the near one does. */
 function isoMerge(s, pi) {
     var lo = pi.link,
-        hi = pi.plink + pi.ofs,
+        hi = pi.plink,
         la = [],
         ha = [];
     s.forEach(function(e) {
@@ -3798,10 +3862,10 @@ function isoMerge(s, pi) {
     return s.map(function(e) {
         var a = e.allow.slice(),
             far = [];
-        if (e.port <= pi.ofs) {
-            if (a.includes(lo)) far = ha.filter(function(p) { return p > pi.ofs });
+        if (isLo(pi, e.port)) {
+            if (a.includes(lo)) far = ha.filter(function(p) { return p >= 1 && !isLo(pi, p) });
         } else if (a.includes(hi)) {
-            far = la.filter(function(p) { return p >= 1 && p <= pi.ofs });
+            far = la.filter(function(p) { return isLo(pi, p) });
         }
         far.forEach(function(p) {
             if (!a.includes(p)) a.push(p)
@@ -4543,7 +4607,7 @@ function buildLag(pi) {
         card.appendChild(h("p", { class: "small mono", id: "lgs" + g, style: "margin-bottom:10px" }));
         var pr = h("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px" });
         for (var p = 1; p <= S.n; p++)
-            if (!pi || (g > 4) === (p > pi.ofs)) pr.appendChild(h("label", null, [
+            if (!pi || (g > 4) === !isLo(pi, p)) pr.appendChild(h("label", null, [
             h("input", {
                 type: "checkbox",
                 id: "lg" + g + "p" + p

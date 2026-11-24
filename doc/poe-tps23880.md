@@ -16,7 +16,7 @@ Each port uses one channel (2-pair PoE):
 
 | Channel | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
-| Port | 1 | 2 | 3 | 4 | 7 | 9 | 8 | - |
+| Port | 1 | 2 | 3 | 4 | 5 | 7 | 6 | - |
 | Switch | Low 4 | Low 5 | Low 6 | Low 7 | High 4 | High 6 | High 5 | not wired |
 
 These settings are in `machine/REMS_8X_LOW_V0_0_0.h` (`MACHINE_POE_CHIP`,

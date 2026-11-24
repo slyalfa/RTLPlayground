@@ -827,7 +827,7 @@ void print_reg(uint16_t reg)
 void print_phys_port(uint8_t port)
 {
 	if (port < CPU_LOGICAL_PORT)
-		write_char(machine.log_to_phys_port[port] + '0');
+		itoa(machine.log_to_phys_port[port]);
 	else if (port == CPU_LOGICAL_PORT)
 		print_string("CPU");
 	else {

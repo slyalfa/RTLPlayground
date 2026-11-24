@@ -22,11 +22,13 @@
  * Low starts each exchange from High's current CTRL seq, so either side can
  * reboot without the two getting out of step.
  *
- * The web interface shows both chips as one switch: High's port n is
- * PEER_PHYS_OFS + n, its LAG group n is PEER_LAGS + n. Low runs
- * "json <path>" on High and renumbers the port and LAG numbers in its answer,
- * see jf_putc(). The per-port lists are spliced into Low's own answer; the
- * web interface merges the rest from /peer/<path>.
+ * The web interface shows both chips as one switch. Both chips already use
+ * the port numbers of the combined switch (machine.log_to_phys_port: Low has
+ * 1-4, 9 and 11, High 5-8, 10 and 12 on the REM-8x), so port numbers pass
+ * unchanged; High's LAG group n is PEER_LAGS + n. Low runs "json <path>" on
+ * High and renumbers the LAG groups in its answer, see jf_putc(). The per-port
+ * lists are spliced into Low's own answer; the web interface merges the rest
+ * from /peer/<path>.
  */
 
 #include <stdint.h>
@@ -80,9 +82,8 @@ extern __xdata uint8_t cmd_words_b[];
  */
 #define PEER_I2C_SPEED		2
 
-/* Numbering of High's ports in the combined switch: right after Low's.
- * Both chips have the same port layout. */
-#define PEER_PHYS_OFS		(MACHINE_MAX_PORT - MACHINE_MIN_PORT + 1)
+/* Port numbers of the combined switch: 1-PEER_PORTS, each one on Low or High */
+#define PEER_PORTS		MACHINE_PHYS_PORTS
 #define PEER_LAGS		4	// LAG groups per chip: High's 1-4 are 5-8
 
 /* JSON filter states */
@@ -228,9 +229,7 @@ static void jf_flush(void)
 			jf_num += PEER_LAGS;
 	} else if (jf_num > 100) {	// LAG 1-4 in STP, 101-104
 		jf_num += PEER_LAGS;
-	} else if (jf_num) {		// Not the CPU
-		jf_num += PEER_PHYS_OFS;
-	}
+	}				// Ports already have their numbers
 	if (jf_num >= 100)
 		jf_emit('0' + jf_num / 100);
 	if (jf_num >= 10)
@@ -368,19 +367,44 @@ bool peer_json_raw(__xdata uint8_t *path) __banked
 }
 
 
+/* Which chip a port of the combined switch is on: 0 none, 1 Low (ours), 2 High.
+ * Ours are the numbers our own tables use, High has the others up to PEER_PORTS. */
+static uint8_t peer_side(uint8_t p)
+{
+	__xdata uint8_t l;
+
+	if (!p || p > PEER_PORTS)
+		return 0;
+	l = machine.phys_to_log_port[p - 1];
+	return MACHINE_PORT_VALID(l) && machine.log_to_phys_port[l] == p ? 1 : 2;
+}
+
+
 /* For /information.json: how the ports of the combined switch are numbered */
 void peer_info_json(void) __banked
 {
 	if (!machine.peer_i2c_addr)
 		return;
-	slen += strtox(outbuf + slen, ",\"peer\":{\"ofs\":");
-	outbuf[slen++] = '0' + PEER_PHYS_OFS;
+	__xdata uint8_t i, p, c = '[';
+
+	slen += strtox(outbuf + slen, ",\"peer\":{\"lo\":");
+	for (i = MACHINE_MIN_PORT; i <= MACHINE_MAX_PORT; i++) {	// Our ports
+		p = machine.log_to_phys_port[i];
+		outbuf[slen++] = c;
+		c = ',';
+		if (p >= 10)
+			outbuf[slen++] = '0' + p / 10;
+		outbuf[slen++] = '0' + p % 10;
+	}
+	outbuf[slen++] = ']';
 	slen += strtox(outbuf + slen, ",\"lags\":");
 	outbuf[slen++] = '0' + PEER_LAGS;
 	slen += strtox(outbuf + slen, ",\"link\":");
-	outbuf[slen++] = '0' + machine.peer_link;
+	outbuf[slen++] = '0' + machine.peer_link / 10;
+	outbuf[slen++] = '0' + machine.peer_link % 10;
 	slen += strtox(outbuf + slen, ",\"plink\":");
-	outbuf[slen++] = '0' + machine.peer_link_remote;
+	outbuf[slen++] = '0' + machine.peer_link_remote / 10;
+	outbuf[slen++] = '0' + machine.peer_link_remote % 10;
 	outbuf[slen++] = '}';
 }
 
@@ -425,11 +449,11 @@ void peer_json_merge(__xdata uint8_t *q) __banked
  */
 bool peer_json_counters(uint8_t port) __banked
 {
-	if (!machine.peer_i2c_addr || port <= PEER_PHYS_OFS || port > 2 * PEER_PHYS_OFS)
+	if (!machine.peer_i2c_addr || peer_side(port) != 2)
 		return true;
 	slen = strtox(outbuf, HTTP_RESPONSE_JSON);
 	jf_skip = 0;
-	fetch_port = port - PEER_PHYS_OFS;
+	fetch_port = port;
 	return !peer_json_fetch("/counters.json?port=");
 }
 
@@ -529,7 +553,7 @@ i2c_err:
 /*
  * Commands of the combined switch, on the managing side. Called by
  * cmd_parser() for every command line before it runs it. Commands naming
- * ports 7-12 go to High with those ports renumbered to 1-6; commands about
+ * High's ports (5-8, 10, 12) go to High unchanged; commands about
  * the whole switch go to both chips; port lists are split up:
  *   vlan <vid> [name] <ports>  both chips get their own ports, plus the
  *                              internal link as a tagged member, so every
@@ -539,8 +563,8 @@ i2c_err:
  *   ingress <port><mode>...    each chip gets its own ports
  *   mirror <port> <ports>      only within one chip, the other one stops
  *                              mirroring; across the chips is refused
- *   lag <group> <ports>        groups 1-4 on ports 1-6 are Low's, groups
- *   laghash <group> ...        5-8 on ports 7-12 are High's groups 1-4;
+ *   lag <group> <ports>        groups 1-4 on Low's ports are Low's, groups
+ *   laghash <group> ...        5-8 on High's ports are High's groups 1-4;
  *   stp lag <group> ...        a group cannot span the chips
  *   lacp off                   both chips
  * Returns true if nothing is left to run here. Otherwise cmd_buffer holds
@@ -592,12 +616,9 @@ static uint8_t r_port(uint8_t w)
 }
 
 
-/* Which chip a port of the combined switch is on: 0 none, 1 Low, 2 High */
 static uint8_t r_side(uint8_t p)
 {
-	if (!p || p > 2 * PEER_PHYS_OFS)
-		return 0;
-	return p > PEER_PHYS_OFS ? 2 : 1;
+	return peer_side(p);
 }
 
 
@@ -630,15 +651,11 @@ static void r_word(uint8_t w)
 }
 
 
-/* Port p of the combined switch as a port of the chip it is on, followed by
- * the rest of the word after the number (e.g. "t") */
-/* Port p of the combined switch as a port of its chip (High if r_hi),
- * followed by the rest of the word after the number (e.g. "t") */
+/* Port p of the combined switch, followed by the rest of the word after the
+ * number (e.g. "t"). Both chips use the combined numbers. */
 static void r_port_word(uint8_t p)
 {
 	r_char(' ');
-	if (r_hi)
-		p -= PEER_PHYS_OFS;
 	if (p >= 10)
 		r_char('0' + p / 10);
 	r_char('0' + p % 10);
@@ -649,8 +666,12 @@ static void r_port_word(uint8_t p)
 /* The internal link, tagged if t */
 static void r_link(uint8_t t)
 {
+	__xdata uint8_t p = r_hi ? machine.peer_link_remote : machine.peer_link;
+
 	r_char(' ');
-	r_char('0' + (r_hi ? machine.peer_link_remote : machine.peer_link));
+	if (p >= 10)
+		r_char('0' + p / 10);
+	r_char('0' + p % 10);
 	if (t)
 		r_char('t');
 }
@@ -759,7 +780,7 @@ bool peer_route(void) __banked
 			return false;
 		for (w = 2; w < cmd_words_len; w++) {
 			if (r_side(r_port(w)) != side) {
-				print_string("mirror: the mirror port and the mirrored ports must be on the same chip, ports 1-6 or 7-12\n");
+				print_string("mirror: the mirror port and the mirrored ports must be on the same chip, ports 1-4, 9, 11 or 5-8, 10, 12\n");
 				err_status = ERR_INVALID_ARGUMENT;
 				return true;
 			}
@@ -784,7 +805,7 @@ bool peer_route(void) __banked
 		other = w_is(0, "lag");	// Only lag takes ports
 		for (w++; other && w < cmd_words_len; w++) {
 			if (r_side(r_port(w)) && r_side(r_port(w)) != side) {
-				print_string("lag: groups 1-4 take ports 1-6, groups 5-8 ports 7-12\n");
+				print_string("lag: groups 1-4 take ports 1-4, 9, 11; groups 5-8 ports 5-8, 10, 12\n");
 				err_status = ERR_INVALID_ARGUMENT;
 				return true;
 			}

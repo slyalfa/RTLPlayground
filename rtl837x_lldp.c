@@ -125,6 +125,9 @@ static void lldp_send_ports(uint16_t ttl, uint16_t ports) __reentrant
     p += LLDP_PORT_ID_PREFIX_LENGTH;
     port_position = (p-LLDP_O->payload);
 	*p++ = '0';       // filled in per port below
+#if MACHINE_PHYS_PORTS > 9
+    *p++ = '0';
+#endif
 
     //TTL
     *p++ = LLDP_TYPE(LLDP_TTL_TLV_TYPE);
@@ -164,7 +167,12 @@ static void lldp_send_ports(uint16_t ttl, uint16_t ports) __reentrant
     for (uint8_t port = MACHINE_MIN_PORT; port <= MACHINE_MAX_PORT; port++) {
 
         if ((1 << port) & ports) {
+#if MACHINE_PHYS_PORTS > 9
+            LLDP_O->payload[port_position] = '0' + machine.log_to_phys_port[port] / 10;
+            LLDP_O->payload[port_position + 1] = '0' + machine.log_to_phys_port[port] % 10;
+#else
             LLDP_O->payload[port_position] = '0' + machine.log_to_phys_port[port];
+#endif
             LLDP_O->rtl_tag.pmask = HTONS((uint16_t)1 << port);
 
             p = tail;

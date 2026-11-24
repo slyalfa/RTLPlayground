@@ -2,3 +2,4 @@ ip 192.168.11.250
 gw 192.168.11.4
 netmask 255.255.255.0
 poe port 4 on
+port 6 name REMS_port6

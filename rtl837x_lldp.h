@@ -2,6 +2,7 @@
 #define _LLDP_H_
 
 #include <stdint.h>
+#include "machine.h"	// MACHINE_PHYS_PORTS
 
 #define LLDP_MIN_ETHERNET_PAYLOAD_LENGTH 46
 #define LLDP_ETHERTYPE       0x88cc
@@ -14,7 +15,13 @@
 #define LLDP_PORT_ID_TLV_TYPE 2
 #define LLDP_PORT_ID_PREFIX "Port "
 #define LLDP_PORT_ID_PREFIX_LENGTH 5
-#define LLDP_PORT_ID_TLV_LENGTH (1 + LLDP_PORT_ID_PREFIX_LENGTH + 1)
+/* One digit for the port number, two where the numbers go past 9 ("Port 05") */
+#if MACHINE_PHYS_PORTS > 9
+#define LLDP_PORT_ID_DIGITS 2
+#else
+#define LLDP_PORT_ID_DIGITS 1
+#endif
+#define LLDP_PORT_ID_TLV_LENGTH (1 + LLDP_PORT_ID_PREFIX_LENGTH + LLDP_PORT_ID_DIGITS)
 #define LLDP_PORT_ID_TLV_SUBTYPE 0x05
 
 #define LLDP_TTL_TLV_TYPE 3

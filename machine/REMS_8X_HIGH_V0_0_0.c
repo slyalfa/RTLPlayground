@@ -1,5 +1,5 @@
-/* High switch of the REM-8x board: same pinout as the Low switch, but port 6
- * (SDS 1) is the hardwired link and port 5 (SDS 0) is a real SFP+ cage. */
+/* High switch of the REM-8x board: same pinout as the Low switch, but SDS 1
+ * (port 12) is the hardwired backplane and SDS 0 (port 10) a real SFP+ cage. */
 #include "machine_defs.h"
 __code const struct machine machine = {
 	MACHINE_COMMON_SETTING,
@@ -9,11 +9,13 @@ __code const struct machine machine = {
        // .max_port = 8,
         .n_sfp = 2,
 	.n_10g = 0,
-        .log_to_phys_port = {0, 0, 0, 5, 1, 2, 3, 4, 6},
-        .phys_to_log_port = {4, 5, 6, 7, 3, 8, 0, 0, 0},
+        /* Numbered as one switch with the Low chip: copper 1-8, SFP+ 9-10,
+         * the backplane 11-12. Ours: copper 5-8, SFP+ 10, backplane 12 */
+        .log_to_phys_port = {0, 0, 0, 10, 5, 6, 7, 8, 12},
+        .phys_to_log_port = {0, 0, 0, 0, 4, 5, 6, 7, 0, 3, 0, 8},
         .is_sfp = {0, 0, 0, 2, 0, 0, 0, 0, 1},
 
-        /* Right SFP+ (6) UTX_0 */
+        /* Backplane (12) UTX_0 */
         .sfp_port[0].pin_detect = GPIO37,
         //.sfp_port[0].pin_detect = GPIO_NA,// for test ing 
         .sfp_port[0].pin_los = GPIO_NA,
@@ -28,7 +30,7 @@ __code const struct machine machine = {
         //.sfp_port[0].fixed_mode = SDS_10GR, // testing on good SPF module 
         .sfp_port[0].i2c = I2CBUS( GPIO41_I2C_SDA3_MDIO1, GPIO40_I2C_SCL3_MDC1 ),
 
-        /* Left SFP+ (5) UTX_1 */
+        /* SFP+ cage (10) UTX_1 */
         //.sfp_port[1].pin_detect = GPIO38,
         .sfp_port[1].pin_detect = GPIO_NA,
         .sfp_port[1].pin_los = GPIO_NA,
@@ -42,9 +44,9 @@ __code const struct machine machine = {
         /* Managed by the Low chip over I2C (our slave interface, pins 134/136,
          * strapped for I2C at 0x5c): run its commands, see peer.c */
         .peer_mailbox = 1,
-        /* The hardwired 10G link: our port 6 (SDS1) to Low's port 5 */
-        .peer_link = 6,
-        .peer_link_remote = 5,
+        /* The hardwired 10G backplane: our port 12 (SDS1) to Low's port 11 */
+        .peer_link = 12,
+        .peer_link_remote = 11,
 
         /* This Turns on the SYS LED
          * It seems the SYS LED is not used for heartbeat */
