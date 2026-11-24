@@ -302,14 +302,62 @@ static void jf_putc(uint8_t c)
 
 __xdata uint8_t peer_quiet;	// peer_cmd() shows no output and no errors
 
+/*
+ * Status commands show High's part after ours, see peer_route_after(). Its
+ * LAG groups and SFP slots are numbered after ours: a digit right after
+ * peer_tf_prefix at the start of a line gets peer_tf_add added.
+ */
+__xdata uint8_t peer_after;		// route_hi holds a status command for High
+__code const char * __xdata peer_tf_prefix;
+__xdata uint8_t peer_tf_add, peer_tf_pos;	// pos: chars of the prefix matched, 0xff = no match this line
+
+static void peer_out_txt(uint8_t c)
+{
+	if (peer_tf_prefix && peer_tf_pos != 0xff) {
+		if (!peer_tf_prefix[peer_tf_pos]) {	// Prefix done: renumber this digit
+			if (c >= '1' && c <= '9')
+				c += peer_tf_add;
+			peer_tf_pos = 0xff;
+		} else if (c == peer_tf_prefix[peer_tf_pos]) {
+			peer_tf_pos++;
+		} else if (c != '\n') {
+			peer_tf_pos = 0xff;
+		}
+	}
+	if (c == '\n')
+		peer_tf_pos = 0;
+	write_char(c);
+}
+
+/*
+ * Tables with a row per port (stat, vlan show, ...) are merged into one, in
+ * port order like the web interface: both chips' output is collected here,
+ * then peer_merge_print() prints our lines with the port rows of both chips
+ * sorted in. A row starts with peer_sort_prefix and its port number.
+ */
+#define PEER_MBUF		1024
+__xdata uint8_t peer_mbuf[2][PEER_MBUF];	// 0: ours, 1: High's
+__xdata uint16_t peer_mlen[2];
+__xdata uint8_t peer_mwhich;		// Buffer being filled
+__xdata uint8_t peer_lcap;		// Our output goes to peer_mbuf[0], see write_char
+__code const char * __xdata peer_sort_prefix;	// 0: no merging
+
+void peer_lcap_putc(char c) __banked
+{
+	if (peer_mlen[peer_mwhich] < PEER_MBUF - 1)
+		peer_mbuf[peer_mwhich][peer_mlen[peer_mwhich]++] = c;
+}
+
 static void peer_out(uint8_t c)
 {
 	if (peer_quiet)
 		return;
 	if (peer_to_json)
 		jf_putc(c);
+	else if (peer_sort_prefix)
+		peer_lcap_putc(c);
 	else
-		write_char(c);
+		peer_out_txt(c);
 }
 
 
@@ -712,10 +760,44 @@ bool peer_route(void) __banked
 {
 	__xdata uint8_t p, side, w, other;
 
+	peer_after = 0;
+	peer_lcap = 0;		// Never left collecting: the console would go quiet
 	if (!machine.peer_i2c_addr || !cmd_words_len)
 		return false;
 	route_lo_n = route_hi_n = 0;
 	r_line = 0;
+
+	/* Status commands: ours first, then High's, see peer_route_after() */
+	peer_tf_prefix = 0;
+	peer_sort_prefix = 0;
+	if (cmd_words_len == 1 && w_is(0, "stat")) {
+		peer_sort_prefix = "";
+		goto after;
+	} else if (cmd_words_len == 2 && w_is(0, "vlan") && w_is(1, "show")) {
+		peer_sort_prefix = "";
+		goto after;
+	} else if (cmd_words_len == 1 && w_is(0, "storm")) {
+		peer_sort_prefix = "port ";
+		goto after;
+	} else if (cmd_words_len == 2 && w_is(0, "eee") && w_is(1, "status")) {
+		peer_sort_prefix = "Port: ";
+		goto after;
+	} else if (cmd_words_len == 1 && (w_is(0, "temp") || w_is(0, "version")
+				   || w_is(0, "l2") || w_is(0, "lldp"))) {
+		goto after;
+	} else if (cmd_words_len == 1 && w_is(0, "sfp")) {
+		peer_tf_prefix = "Slot ";
+		peer_tf_add = machine.n_sfp;
+		goto after;
+	} else if (cmd_words_len == 2 && w_is(1, "show") && w_is(0, "lag")) {
+		peer_tf_prefix = " ";
+		peer_tf_add = PEER_LAGS;
+		goto after;
+	} else if (cmd_words_len == 2 && ((w_is(1, "show") && (w_is(0, "igmp") || w_is(0, "lacp")
+								|| w_is(0, "lldp")))
+					  || (w_is(1, "status") && (w_is(0, "mirror") || w_is(0, "stp"))))) {
+		goto after;
+	}
 
 	if (w_is(0, "port") || w_is(0, "mtu") || w_is(0, "pvid") || w_is(0, "storm")) {
 		w = 1;
@@ -838,10 +920,24 @@ bool peer_route(void) __banked
 	} else if ((w_is(0, "l2") && w_is(1, "forget")) || (w_is(0, "eee") && cmd_words_len == 2)
 		   || (w_is(0, "lacp") && w_is(1, "off"))
 		   || ((w_is(0, "igmp") || w_is(0, "lldp")) && (w_is(1, "on") || w_is(1, "off")))
+
 		   || (w_is(0, "stp") && cmd_words_len > 1 && !w_is(1, "lag") && !w_is(1, "status"))) {
 		goto both;
 	}
 	return false;
+
+after:
+	r_hi = 1;
+	r_line = 1;
+	r_copy(0);
+	route_hi[route_hi_n] = NUL;
+	peer_after = 1;
+	if (peer_sort_prefix) {	// Collect our output for the merge
+		peer_mlen[0] = peer_mlen[1] = 0;
+		peer_mwhich = 0;
+		peer_lcap = 1;
+	}
+	return false;	// Ours runs now, High's in peer_route_after()
 
 single:
 	p = r_port(w);
@@ -1066,3 +1162,139 @@ void peer_lldp_addr(void) __banked
 }
 
 
+/* The merge: walk lines of a buffer by index */
+__xdata uint16_t pm_i, pm_j, pm_end;
+__xdata uint8_t pm_b, pm_k, pm_n, pm_rows;
+
+/* Port number of the row starting at peer_mbuf[pm_b][pm_j], 0 if no row */
+static uint8_t pm_key(void)
+{
+	pm_end = pm_j;
+	for (pm_k = 0; peer_sort_prefix[pm_k]; pm_k++, pm_end++)
+		if (pm_end >= peer_mlen[pm_b] || peer_mbuf[pm_b][pm_end] != peer_sort_prefix[pm_k])
+			return 0;
+	pm_n = 0;
+	for (pm_k = 0; pm_k < 2 && pm_end < peer_mlen[pm_b]; pm_k++, pm_end++) {
+		if (peer_mbuf[pm_b][pm_end] < '0' || peer_mbuf[pm_b][pm_end] > '9')
+			break;
+		pm_n = pm_n * 10 + peer_mbuf[pm_b][pm_end] - '0';
+	}
+	if (!pm_k || (pm_end < peer_mlen[pm_b] && peer_mbuf[pm_b][pm_end] >= '0' && peer_mbuf[pm_b][pm_end] <= '9'))
+		return 0;
+	return pm_n;
+}
+
+/* Print the line starting at peer_mbuf[pm_b][pm_j], with its '\n' */
+static void pm_line(void)
+{
+	for (pm_end = pm_j; pm_end < peer_mlen[pm_b]; pm_end++) {
+		write_char(peer_mbuf[pm_b][pm_end]);
+		if (peer_mbuf[pm_b][pm_end] == '\n')
+			return;
+	}
+}
+
+/* pm_j to the start of the next line of buffer pm_b */
+static void pm_next(void)
+{
+	while (pm_j < peer_mlen[pm_b] && peer_mbuf[pm_b][pm_j++] != '\n')
+		;
+}
+
+/* Our lines, with the rows of both chips in port order where our first row was */
+static void peer_merge_print(void)
+{
+	__xdata uint8_t port;
+
+	pm_rows = 0;
+	for (pm_i = 0; pm_i < peer_mlen[0]; ) {
+		pm_b = 0;
+		pm_j = pm_i;
+		if (!pm_key()) {
+			pm_line();
+		} else if (!pm_rows) {
+			pm_rows = 1;
+			for (port = 1; port <= PEER_PORTS; port++) {
+				for (pm_b = 0; pm_b < 2; pm_b++) {
+					for (pm_j = 0; pm_j < peer_mlen[pm_b]; pm_next()) {
+						if (pm_key() == port) {
+							pm_line();
+							break;
+						}
+					}
+				}
+			}
+		}
+		pm_b = 0;
+		pm_j = pm_i;
+		pm_next();
+		pm_i = pm_j;
+	}
+}
+
+
+/* After a status command ran here: High's part, under a heading */
+void peer_route_after(void) __banked
+{
+	__xdata uint8_t i, p;
+
+	if (!peer_after)
+		return;
+	peer_after = 0;
+	if (peer_sort_prefix) {
+		peer_lcap = 0;
+		peer_mwhich = 1;
+		if (peer_cmd(route_hi) != ERR_OK)
+			err_status = ERR_INVALID_ARGUMENT;
+		peer_merge_print();
+		peer_sort_prefix = 0;
+		return;
+	}
+	print_string("\n--- High chip, ports ");
+	for (p = 1, i = 0; p <= PEER_PORTS; p++) {	// The numbers that are not ours
+		if (peer_side(p) != 2)
+			continue;
+		if (i++)
+			write_char(',');
+		itoa(p);
+	}
+	print_string(" ---\n");
+	peer_tf_pos = 0;
+	if (peer_cmd(route_hi) != ERR_OK)
+		err_status = ERR_INVALID_ARGUMENT;
+	peer_tf_prefix = 0;
+}
+
+
+/*
+ * At boot, before our config runs: High boots along with us and only reads
+ * its mailbox once it has run its own config, so wait for its answer to a
+ * quiet command. Otherwise the lines of our config meant for High are lost.
+ */
+#define PEER_READY_TRIES	12	// About 2 s each: up to ~25 s
+
+void peer_wait_ready(void) __banked
+{
+	static __code const char * __xdata s;
+	__xdata uint8_t tries;
+
+	if (!machine.peer_i2c_addr)
+		return;
+	print_string("Waiting for the peer switch");
+	for (tries = 0; tries < PEER_READY_TRIES; tries++) {
+		route_hi_n = 0;
+		for (s = "temp"; *s; s++)
+			route_hi[route_hi_n++] = *s;
+		route_hi[route_hi_n] = NUL;
+		peer_quiet = 1;
+		if (peer_cmd(route_hi) == ERR_OK) {
+			peer_quiet = 0;
+			print_string(" ready\n");
+			return;
+		}
+		peer_quiet = 0;
+		write_char('.');
+		delay(SYS_TICK_HZ);	// An I2C error comes back at once
+	}
+	print_string(" no answer: its part of the config is lost\n");
+}

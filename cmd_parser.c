@@ -2424,6 +2424,8 @@ void cmd_parser(void) __banked
 		else {
 			cmd_error("Unknown command\n");
 		}
+		// Two-chip board: a status command shows the peer chip's part too
+		peer_route_after();
 
 
 		if (save_cmd && cmd_words_len && err_status == ERR_OK) {
@@ -2525,7 +2527,26 @@ config_done:
 // Execute multiple commands
 // If a command is too long or can't be tokenized, remaining commands are not executed
 // Returns the status via `err_status`-variable.
+/*
+ * Commands from the web interface (/cmd) or from the peer chip run while
+ * someone may be typing on the serial console, whose line lives in
+ * cmd_buffer: keep it, see execute_commands().
+ */
+static __xdata uint8_t cmd_buffer_saved[CMD_BUF_SIZE];
+
+static void execute_commands_run(__xdata uint8_t *p);
+
 void execute_commands(__xdata uint8_t *p) __banked {
+	__xdata uint8_t i;
+
+	for (i = 0; i < CMD_BUF_SIZE; i++)
+		cmd_buffer_saved[i] = cmd_buffer[i];
+	execute_commands_run(p);
+	for (i = 0; i < CMD_BUF_SIZE; i++)
+		cmd_buffer[i] = cmd_buffer_saved[i];
+}
+
+static void execute_commands_run(__xdata uint8_t *p) {
 	__xdata uint8_t failed = ERR_OK;
 	err_status = ERR_OK;
 	uint8_t cmd_idx = 0;

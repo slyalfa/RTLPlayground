@@ -250,6 +250,10 @@ void write_char_no_syslog(char c)
 		peer_mbox_putc(c);
 		return;
 	}
+	if (peer_lcap) {	// Collected to merge with the peer's, see peer_route()
+		peer_lcap_putc(c);
+		return;
+	}
 	if (cmd_capture) {
 		if (slen < TCP_OUTBUF_SIZE - sizeof(CMD_TRUNCATED))
 			outbuf[slen++] = c;
@@ -1780,6 +1784,7 @@ void main(void)
 #ifdef POE_PRESENT
 	poe_init();	// Before the config, whose `poe` lines then refine it
 #endif
+	peer_wait_ready();	// High boots with us: its config lines must reach it
 	execute_config();
 	// After the config so the entry lands in the final management VLAN
 	port_l2_static_mgmt(uip_ethaddr.addr, management_vlan, false);
