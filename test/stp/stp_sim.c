@@ -12,6 +12,10 @@
 #include "rtl837x_stp.h"
 
 #define NPORTS 9 /* indices 0..8, front-panel 1..9 */
+#define PORT(n) ((n) - 1)
+#define LINK(n) (1 << PORT(n))
+#define ROOT_HELLO_S 2
+#define SETTLE_MAX_S 60
 
 uint8_t uip_buf[UIP_CONF_BUFFER_ALLOC_SIZE];
 uint16_t uip_len;
@@ -1033,6 +1037,57 @@ static void scen_tc_propagation(void)
 	check(tc_frames[8] == tc9, "no TC is echoed back to the root");
 }
 
+extern uint16_t stp_tcwhile[STP_ENTITIES];
+
+static void settle(const struct sim_bpdu *r, uint16_t ports)
+{
+	int s;
+
+	for (s = 0; s < SETTLE_MAX_S; s += ROOT_HELLO_S) {
+		int busy = 0;
+		for (int p = 0; p < NPORTS; p++)
+			if ((ports >> p) & 1 && (port_state(p) != STP_FORWARDING || stp_tcwhile[p]))
+				busy = 1;
+		if (!busy)
+			break;
+		bpdu_in(r);
+		secs(ROOT_HELLO_S);
+	}
+	check(s < SETTLE_MAX_S, "the ports forward and their TC window has closed");
+}
+
+static void scen_tc_each_flushes(void)
+{
+	const uint16_t others = LINK(2) | LINK(3);
+	struct sim_bpdu r;
+	struct sim_bpdu rtc;
+	int tc2;
+
+	printf("62. every TC heard inside the TC window flushes again\n");
+	reset_all();
+	stp_pflags[PORT(2)] &= ~STP_PF_AUTOEDGE;
+	stp_pflags[PORT(3)] &= ~STP_PF_AUTOEDGE;
+	links_set(others | LINK(9));
+	secs(1);
+	r = root_on(PORT(9));
+	settle(&r, others);
+	memset(flush_count, 0, sizeof(flush_count));
+	rtc = r;
+	rtc.flags = BPDU_ROLE_DESIGNATED | BPDU_FLAG_LEARNING | BPDU_FLAG_FORWARDING | BPDU_FLAG_TC;
+	bpdu_in(&rtc);
+	tick(2);
+	tc2 = tc_frames[PORT(2)];
+	tick(STP_HZ);
+	bpdu_in(&rtc);
+	tick(2);
+	for (int p = 0; p < NPORTS; p++)
+		if ((others >> p) & 1)
+			check(flush_count[p] == 2, "the second TC flushes the other forwarding ports again");
+	check(flush_count[PORT(9)] == 0, "but never the port it came in on");
+	tick(5 * STP_HZ);
+	check(tc_frames[PORT(2)] - tc2 <= 2, "and does not stretch the TC window");
+}
+
 static void scen_tc_legacy_tcn(void)
 {
 	struct sim_bpdu r;
@@ -1225,6 +1280,41 @@ static void scen_guard_link_flap(void)
 	sim_cmd("stp port 4 on");
 	check(!(stp_pflags[3] & STP_PF_TRIPPED), "stp port on clears the trip");
 	check(ticks_forwarding(3, NULL, 5) > 0, "and the port can forward again");
+}
+
+static void scen_guard_change_clears(void)
+{
+	struct sim_bpdu r = rogue_on(3);
+
+	printf("67. changing the guard of a tripped port brings it back\n");
+	reset_all();
+	sim_cmd("stp port 4 guard bpdu");
+	links_set(1 << 3);
+	secs(6);
+	bpdu_in(&r);
+	check_state(3, 0, "the BPDU trips the edge port");
+	sim_cmd("stp port 4 guard none");
+	check(!(stp_pflags[3] & STP_PF_TRIPPED), "guard none clears the trip");
+	check(ticks_forwarding(3, NULL, 2) == 0, "the port does not forward at once");
+	check(ticks_forwarding(3, NULL, 10) > 0, "but does after the edge wait");
+	reset_all();
+	sim_cmd("stp port 4 guard bpdu");
+	links_set(1 << 3);
+	secs(6);
+	bpdu_in(&r);
+	sim_cmd("stp port 4 guard bpdu");
+	check(ticks_forwarding(3, NULL, 1) == 0, "re-arming the guard does not forward before the next BPDU");
+	bpdu_in(&r);
+	check(stp_pflags[3] & STP_PF_TRIPPED, "a BPDU still arriving trips it again");
+	check(ticks_forwarding(3, NULL, 10) == 0, "and it stays off");
+	reset_all();
+	sim_cmd("stp port 4 guard bpdu");
+	links_set(1 << 3);
+	secs(6);
+	bpdu_in(&r);
+	sim_cmd("stp port 4 off");
+	sim_cmd("stp port 4 guard none");
+	check(ticks_forwarding(3, NULL, 5) == 5 * STP_HZ, "a port with STP off keeps forwarding");
 }
 
 static void scen_guard_lag_change(void)
@@ -2516,12 +2606,14 @@ int main(int argc, char **argv)
 	scen_tc_via_root_port();
 	scen_tc_window_rstp();
 	scen_tc_propagation();
+	scen_tc_each_flushes();
 	scen_tc_legacy_tcn();
 	scen_alt_forgets();
 	scen_edge_no_tc();
 	scen_link_loss_no_tc();
 	scen_guard_in_listen();
 	scen_guard_link_flap();
+	scen_guard_change_clears();
 	scen_guard_lag_change();
 	scen_proposal_agreement();
 	scen_no_agreement();

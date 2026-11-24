@@ -468,11 +468,14 @@ void peer_info_json(void) __banked
  * entry, so whatever follows High's list (e.g. "]}") closes the result.
  * If High does not answer, our own answer is left as it was.
  */
-void peer_json_merge(__xdata uint8_t *q) __banked
+void peer_json_merge(__xdata uint8_t *q_arg) __banked
 {
+	static __xdata uint8_t * __xdata q;	// Internal RAM is full
 	__xdata uint8_t tail[4];
 	__xdata uint16_t end = slen, t = slen;
 	__xdata uint8_t i;
+
+	q = q_arg;
 
 	if (!machine.peer_i2c_addr)
 		return;
@@ -540,10 +543,13 @@ static uint8_t peer_stat_wait(uint16_t timeout)
  * ERR_OK, or ERR_INVALID_ARGUMENT if the command failed there or could
  * not be delivered (with a message saying which).
  */
-uint8_t peer_cmd(__xdata uint8_t *line) __banked
+uint8_t peer_cmd(__xdata uint8_t *line_arg) __banked
 {
+	static __xdata uint8_t * __xdata line;	// Internal RAM is full
 	__xdata uint16_t len = 0;
 	__xdata uint8_t n, i, op;
+
+	line = line_arg;
 
 	if (!machine.peer_i2c_addr) {
 		print_string("peer: this board has no peer switch\n");

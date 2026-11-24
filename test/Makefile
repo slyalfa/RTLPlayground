@@ -29,6 +29,7 @@ TESTS = $(BUILDDIR)/test_cmd_editor \
         $(BUILDDIR)/test_page_json \
         $(BUILDDIR)/test_httpd_tx \
         $(BUILDDIR)/test_tick_gate \
+        $(BUILDDIR)/test_health_idle \
         $(BUILDDIR)/test_timer \
         $(BUILDDIR)/test_cpu_vlan_full \
         $(BUILDDIR)/test_cpu_vlan_restricted \
@@ -61,6 +62,9 @@ $(BUILDDIR)/test_port_tables: test_port_tables.c $(TABLE_ENV) hw_mock.h | $(BUIL
 $(BUILDDIR)/test_tick_gate: test_tick_gate.c support.c $(SRCROOT)/cmd_editor.c $(SRCROOT)/timer.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
+$(BUILDDIR)/test_health_idle: test_health_idle.c support.c $(SRCROOT)/cmd_editor.c $(SRCROOT)/health_idle.h | $(BUILDDIR)
+	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@ $(LDFLAGS)
+
 # timer.c is compiled UNMODIFIED from the firmware tree.
 $(BUILDDIR)/test_timer: test_timer.c support.c $(SRCROOT)/cmd_editor.c $(SRCROOT)/timer.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
@@ -77,8 +81,7 @@ $(BUILDDIR)/test_page_json: test_page_json.c $(TABLE_ENV) hw_mock.h | $(BUILDDIR
 $(BUILDDIR)/test_lacp: test_lacp.c $(SRCROOT)/rtl837x_lacp.c $(SRCROOT)/timer.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
-# rtl837x_igmp.c is compiled UNMODIFIED; hw_mock.c is the table engine.
-$(BUILDDIR)/test_igmp: test_igmp.c support.c hw_mock.c $(SRCROOT)/cmd_editor.c $(SRCROOT)/rtl837x_igmp.c | $(BUILDDIR)
+$(BUILDDIR)/test_igmp: test_igmp.c $(SRCROOT)/rtl837x_igmp.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # crypto/rnd.c is compiled UNMODIFIED; a C ChaCha20 stands in for the 8051 core.
@@ -87,7 +90,7 @@ $(BUILDDIR)/test_rnd: test_rnd.c support.c $(SRCROOT)/cmd_editor.c $(SRCROOT)/cr
 
 # poe/tps23880.c is compiled UNMODIFIED, with the REM-8x Low PoE settings;
 # hw_mock.c's I2C hook plays the TPS23880.
-$(BUILDDIR)/test_poe: CFLAGS += -I$(SRCROOT)/machine -DMACHINE_POE_CHIP=POE_TPS23880 -DPOE_TPS_ADDR=0x20 \
+$(BUILDDIR)/test_poe: CFLAGS += -I$(SRCROOT)/machine -DFRIENDLY_NAME='"test"' -DMACHINE_POE_CHIP=POE_TPS23880 -DPOE_TPS_ADDR=0x20 \
 	-DPOE_I2C_BUS=machine.peer_i2c -DPOE_RESET_GPIO=30 -DPOE_IMAGE_LOCATION=0x60000UL \
 	'-DPOE_CHANNEL_PORTS={ 1, 2, 3, 4, 7, 9, 8, 0 }'
 $(BUILDDIR)/test_poe: test_poe.c support.c hw_mock.c $(SRCROOT)/cmd_editor.c $(SRCROOT)/poe/tps23880.c | $(BUILDDIR)

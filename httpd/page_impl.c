@@ -295,7 +295,8 @@ void send_vlan(uint16_t vlan)
 				((uint32_t)sfr_data[3]);
 
 	uint16_t members = (uint16_t)(m & 0x3FF);
-	uint16_t untagged = (uint16_t)(((m >> 10) & 0x3FF) & members);
+	static __xdata uint16_t untagged;	// Internal RAM is full
+	untagged = (uint16_t)(((m >> 10) & 0x3FF) & members);
 
 	for (uint8_t i = MACHINE_MIN_PORT; i <= MACHINE_MAX_PORT; i++) {
 		if(members & (1<<i)) {

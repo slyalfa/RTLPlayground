@@ -6,7 +6,7 @@
  * and #712 (RTL8238C): a driver per PSE chip implements it, and the console
  * (`poe ...`), /poe.json and the boot call only this.
  *
- * A machine selects its PSE in machine/<MACHINE>.h:
+ * A PCB selects its PSE in machine/pcb/<PCB>.h (included by machine.h):
  *   #define MACHINE_POE_CHIP POE_TPS23880
  * plus whatever its driver needs (see poe/tps23880.c). Without it, or when
  * built with NO_POE=1, no PoE code is compiled in.
@@ -17,7 +17,7 @@
  */
 
 #include <stdint.h>
-#include "machine.h"	// MACHINE_POE_CHIP comes from machine/<MACHINE>.h
+#include "machine.h"	// MACHINE_POE_CHIP comes from machine/pcb/<PCB>.h
 
 #define POE_NONE	0
 #define POE_TPS23880	1

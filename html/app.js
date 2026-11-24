@@ -135,6 +135,7 @@ var LANG = {
         stp_r2: "Designated",
         stp_r3: "Alternate",
         stp_trip: "guard tripped",
+        stp_trip_t: "Change the guard of this port and press apply to bring it back",
         stp_g_none: "None",
         stp_g_bpdu: "BPDU",
         stp_g_root: "Root",
@@ -246,7 +247,7 @@ var LANG = {
         lacp_neg: "negotiating",
         lacp_agg: "aggregator",
         lacp_members: "active members",
-        lacp_hint: "LACP: select candidate ports and press Apply to start negotiation",
+        lacp_hint: "select candidate ports and press Apply to start negotiation",
         lacp_actor: "Actor",
         lacp_partner: "Partner",
         lacp_rxstate: "RX state",
@@ -538,6 +539,7 @@ var LANG = {
         stp_r2: "指定",
         stp_r3: "代替",
         stp_trip: "ガード作動",
+        stp_trip_t: "このポートのガード設定を変更して適用すると復帰します",
         stp_g_none: "なし",
         stp_g_bpdu: "BPDU",
         stp_g_root: "ルート",
@@ -860,6 +862,7 @@ var LANG = {
         stp_r2: "指定端口",
         stp_r3: "替代端口",
         stp_trip: "保护触发",
+        stp_trip_t: "更改此端口的保护设置并应用即可恢复",
         stp_g_none: "无",
         stp_g_bpdu: "BPDU",
         stp_g_root: "根桥",
@@ -1256,6 +1259,7 @@ var LANG = {
         stp_r2: "Designado",
         stp_r3: "Alternativo",
         stp_trip: "protección disparada",
+        stp_trip_t: "Cambie la protección de este puerto y aplique para recuperarlo",
         stp_g_none: "Ninguno",
         stp_g_bpdu: "BPDU",
         stp_g_root: "Raíz",
@@ -1486,7 +1490,7 @@ var LANG = {
         lacp_neg: "negociando",
         lacp_agg: "agregador",
         lacp_members: "miembros activos",
-        lacp_hint: "LACP: elige los puertos candidatos y pulsa Aplicar para iniciar la negociación",
+        lacp_hint: "elige los puertos candidatos y pulsa Aplicar para iniciar la negociación",
         lacp_actor: "Local",
         lacp_partner: "Remoto",
         lacp_rxstate: "Estado RX",
@@ -1659,6 +1663,7 @@ var LANG = {
         stp_r2: "Designé",
         stp_r3: "Alternatif",
         stp_trip: "protection déclenchée",
+        stp_trip_t: "Changez la protection de ce port et appliquez pour le rétablir",
         stp_g_none: "Aucun",
         stp_g_bpdu: "BPDU",
         stp_g_root: "Racine",
@@ -2022,6 +2027,7 @@ var LANG = {
         stp_r2: "Designated",
         stp_r3: "Alternate",
         stp_trip: "Guard ausgelöst",
+        stp_trip_t: "Guard dieses Ports ändern und übernehmen, um ihn zurückzuholen",
         stp_g_none: "Keiner",
         stp_g_bpdu: "BPDU",
         stp_g_root: "Root",
@@ -2137,7 +2143,7 @@ var LANG = {
         lacp_neg: "wird ausgehandelt",
         lacp_agg: "Aggregator",
         lacp_members: "aktive Mitglieder",
-        lacp_hint: "LACP: Ports auswählen und Übernehmen drücken, um die Aushandlung zu starten",
+        lacp_hint: "Ports auswählen und Übernehmen drücken, um die Aushandlung zu starten",
         lacp_actor: "Lokal",
         lacp_partner: "Partner",
         lacp_rxstate: "Empfangsstatus",
@@ -2362,8 +2368,8 @@ function esc(s) {
     })
 }
 
-function badge(txt, cls) {
-    return '<span class="badge' + (cls ? " " + cls : "") + '">' + esc(txt) + "</span>"
+function badge(txt, cls, tip) {
+    return '<span class="badge' + (cls ? " " + cls : "") + '"' + (tip ? ' title="' + esc(tip) + '"' : "") + ">" + esc(txt) + (tip ? " 🛈" : "") + "</span>"
 }
 
 function linkBadge(p) {
@@ -2704,6 +2710,11 @@ TABS.forEach(function(tb) {
 });
 $("burger").addEventListener("click", function() {
     $("nav").classList.toggle("open")
+});
+
+$("nav-overlay").addEventListener("click", function() {
+    $("nav").classList.remove("open");
+    $("burger").focus();
 });
 
 var IDLE_STOP_MS = 600000,
@@ -3491,7 +3502,7 @@ function stpLoad() {
         }
         s.ports.forEach(function(pt) {
             var p = stpKey(pt);
-            var trip = (pt.f & STP_PF.TRIP) ? " " + badge(t("stp_trip"), "bad") : "";
+            var trip = (pt.f & STP_PF.TRIP) ? " " + badge(t("stp_trip"), "bad", t("stp_trip_t")) : "";
             $("stro" + p).textContent = s.on && pt.role ? t("stp_r" + pt.role) : "-";
             $("stst" + p).innerHTML = s.on ? (pt.lk ? badge(t("stp_s" + pt.st), pt.st === 3 ? "ok" : "") : badge(t("stp_nolink"))) + trip : "-";
             $("stdb" + p).textContent = s.on ? fmtBridge(pt.db) : "-";
@@ -4590,8 +4601,22 @@ tabHooks.isolate = {
     }
 };
 
-var HASHF = ["spa", "smac", "dmac", "sip", "dip", "sport", "dport"];
+function lagRefreshPortLocks(lagPortOwner) {
+    for (var g = 1; g <= 8; g++) {
+        for (var p = 1; p <= S.n; p++) {
+            var cb = $("lg" + g + "p" + p);
+            if (!cb) continue;	// Group or port not on this board / chip
+            if (lagPortOwner[p] !== 0 && lagPortOwner[p] !== g) {
+              cb.checked = false;
+              cb.disabled = true;
+            } else {
+              cb.disabled = false;
+            }
+        }
+    }
+}
 
+var HASHF = ["spa", "smac", "dmac", "sip", "dip", "sport", "dport"];
 /* Two-chip board: groups 5-8 are the second chip's, on its ports only */
 function buildLag(pi) {
     var w = $("lagwrap");
@@ -4608,17 +4633,19 @@ function buildLag(pi) {
             $("lgs" + g).textContent = ms.value === "lacp" ? t("lacp_hint") : ""
         });
         mr.appendChild(ms);
+        mr.appendChild(h("span", { class: "small mono", id: "lgs" + g, style: "display:inline-blocck;margin-left:10px"}));
         card.appendChild(mr);
-        card.appendChild(h("p", { class: "small mono", id: "lgs" + g, style: "margin-bottom:10px" }));
-        var pr = h("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px" });
-        for (var p = 1; p <= S.n; p++)
-            if (!pi || (g > 4) === !isLo(pi, p)) pr.appendChild(h("label", null, [
-            h("input", {
-                type: "checkbox",
-                id: "lg" + g + "p" + p
-            }), document.createTextNode(" " + p + " "),
-        ]));
+        var pr = h("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px", class: "small"});
+        pr.appendChild(h("span", { class: "mut", text: t("c_port") + ":" }));
+        for (var p = 1; p <= S.n; p++) {
+            if (pi && (g > 4) !== !isLo(pi, p)) continue;	// Not this chip's port
+            pr.appendChild(h("label", null, [
+                h("input", {type: "checkbox",id: "lg" + g + "p" + p}), 
+                document.createTextNode(" " + p + " "),
+            ]))
+        };
         card.appendChild(pr);
+        
         var hr = h("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px", class: "small" });
         hr.appendChild(h("span", { class: "mut", text: t("lag_hash") }));
         HASHF.forEach(function(f) {
@@ -4637,8 +4664,8 @@ function buildLag(pi) {
         w.appendChild(card);
     })(g);
 }
-var lacpCfg = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
+var lacpCfg = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 function lagLoad() {
     return Promise.all([getJSON("/lag.json"), peerGet("/lag.json")]).then(function(r) {
         var s = r[0],
@@ -4647,22 +4674,31 @@ function lagLoad() {
             s.lags = s.lags.concat(ps.lags);
             s.ports = s.ports.concat(ps.ports);
         }
+        var lagPortOwner = Array(S.n + 1).fill(0);
+        s.lags.forEach(function(l) {
+            var g = l.lagNum + 1;
+            l.members.forEach(function(p) {
+                lagPortOwner[p] = g;
+            })
+        });
         s.lags.forEach(function(l) {
             var g = l.lagNum + 1;
             if (!$("lgm" + g) || $("lgm" + g).closest(".card").dataset.dirty) return;
             for (var p = 1; p <= S.n; p++) {
-                var b = $("lg" + g + "p" + p);
-                if (b) b.checked = l.members.includes(p);
-            }
+                var b = $("lg" + g + "p" + p);	// Only the ports of the group's chip
+                if (b) b.checked = lagPortOwner[p] === g;
+            };
+            
             $("lgm" + g).value = l.type;
-            $("lgs" + g).textContent = l.type == "lacp" ? "LACP: " + t("lacp_agg") + " " + (l.valid ? l.aggregator : "(" + t("lacp_neg") + ")") + ", " + t("lacp_members") + " " + l.active_members.join(" ") : "";
+            $("lgs" + g).textContent = l.type == "lacp" ? t("lacp_agg") + " " + (l.valid ? l.aggregator : "(" + t("lacp_neg") + ")") + ", " + t("lacp_members") + " " + l.active_members.join(" ") : "";
             lacpCfg[g] = l.type=="lacp";
             var hash = parseInt(l.hash, 16);
             HASHF.forEach(function(f, i) {
                 $("lg" + g + "h" + f).checked = !!((hash >> i) & 1)
             });
         });
-
+        lagRefreshPortLocks(lagPortOwner);
+        
         var tb = $("lacptbl").tBodies[0];
         tb.innerHTML = "";
         s.ports.forEach(function(p) {

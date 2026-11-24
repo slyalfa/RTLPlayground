@@ -68,7 +68,7 @@ static uint16_t lldp_links(void) __reentrant
 
 void lldp_tick(void) __banked
 {
-    uint16_t links;
+    static __xdata uint16_t links;	// Internal RAM is full
 
     if (!timer_expired(&lldp_timer))
         return;
