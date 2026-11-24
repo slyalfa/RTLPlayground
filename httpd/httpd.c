@@ -10,6 +10,7 @@
 #include "sessions.h"
 #include "html_data.h"
 #include "peer.h"
+#include "poe/poe.h"
 
 // #define DEBUG
 #include "debug.h"
@@ -923,6 +924,10 @@ bool httpd_json(__xdata uint8_t *q) __banked
 		peer_json_merge(q);
 	} else if (is_word(q, "/vlanlist.json")) {
 		send_vlanlist();
+#ifdef POE_PRESENT
+	} else if (is_word(q, "/poe.json")) {
+		send_poe();
+#endif
 	} else {
 		return false;
 	}

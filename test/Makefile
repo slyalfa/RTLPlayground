@@ -36,7 +36,8 @@ TESTS = $(BUILDDIR)/test_cmd_editor \
         $(BUILDDIR)/test_nic_rx \
         $(BUILDDIR)/test_lacp \
         $(BUILDDIR)/test_igmp \
-        $(BUILDDIR)/test_rnd
+        $(BUILDDIR)/test_rnd \
+        $(BUILDDIR)/test_poe
 
 # The table tests link the register mock and one environment file; stub/
 # stands in for the two headers a firmware build generates.
@@ -82,6 +83,14 @@ $(BUILDDIR)/test_igmp: test_igmp.c support.c hw_mock.c $(SRCROOT)/cmd_editor.c $
 
 # crypto/rnd.c is compiled UNMODIFIED; a C ChaCha20 stands in for the 8051 core.
 $(BUILDDIR)/test_rnd: test_rnd.c support.c $(SRCROOT)/cmd_editor.c $(SRCROOT)/crypto/rnd.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+
+# poe/tps23880.c is compiled UNMODIFIED, with the REM-8x Low PoE settings;
+# hw_mock.c's I2C hook plays the TPS23880.
+$(BUILDDIR)/test_poe: CFLAGS += -I$(SRCROOT)/machine -DMACHINE_POE_CHIP=POE_TPS23880 -DPOE_TPS_ADDR=0x20 \
+	-DPOE_I2C_BUS=machine.peer_i2c -DPOE_RESET_GPIO=30 -DPOE_IMAGE_LOCATION=0x60000UL \
+	'-DPOE_CHANNEL_PORTS={ 1, 2, 3, 4, 7, 9, 8, 0 }'
+$(BUILDDIR)/test_poe: test_poe.c support.c hw_mock.c $(SRCROOT)/cmd_editor.c $(SRCROOT)/poe/tps23880.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # httpd/httpd.c and uip/uip.c are compiled UNMODIFIED from the firmware tree;

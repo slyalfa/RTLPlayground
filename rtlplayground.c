@@ -36,6 +36,7 @@
 #include "boot.h"
 #include "sfp.h"
 #include "peer.h"
+#include "poe/poe.h"
 
 extern __code const struct machine machine;
 extern __xdata uint32_t flash_size;
@@ -1774,6 +1775,9 @@ void main(void)
 	early_boot_handle_button();
 
 	rnd_init();	// After the boot's variable timing, before DHCP or a session needs it
+#ifdef POE_PRESENT
+	poe_init();	// Before the config, whose `poe` lines then refine it
+#endif
 	execute_config();
 	// After the config so the entry lands in the final management VLAN
 	port_l2_static_mgmt(uip_ethaddr.addr, management_vlan, false);
