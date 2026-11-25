@@ -148,6 +148,23 @@ var LANG = {
         lldp_title: "Service Status",
         lldp_portname: "Port name",
         lldp_nb: "Neighbor",
+        ct_title: "Cable test",
+        ct_btn: "Cable test",
+        ct_warn: "The link on this port goes down for a few seconds. Don't test the port your computer reaches the switch through.",
+        ct_start: "Start",
+        ct_running: "Testing the cable...",
+        ct_pair: "Pair",
+        ct_status: "Status",
+        ct_dist: "Distance",
+        ct_ok: "ok",
+        ct_open: "open",
+        ct_short: "short",
+        ct_cross: "short to another pair",
+        ct_mismatch: "impedance mismatch",
+        ct_unknown: "unknown",
+        ct_timeout: "The test timed out.",
+        ct_noresult: "No result.",
+        ct_nocable: "No cable plugged in.",
         lldp_enable: "Send Frames",
         stp_pcs: "Path cost",
         stp_pcs_long: "Long (32 bit)",
@@ -2954,11 +2971,7 @@ function updateStrip() {
         lb.textContent = !p.enabled ? t("c_off") : (p.link != "DOWN" ? (el.classList.contains("bp") ? t("c_bp") : p.link) : t("c_down"));
     });
     if (S.tip != null) portTip(S.tip);
-    if (S.detail != null) {
-        var b = $("mbody");
-        b.innerHTML = "";
-        b.appendChild(detailTable(S.ports[S.detail]));
-    }
+    if (S.detail != null) ctRefresh();
 }
 
 function pU16(v) {
@@ -3040,9 +3053,124 @@ function detailTable(p) {
     return tb;
 }
 
+/* Cable test from the port details: the console commands `port N cabletest`
+ * and `port N cabletest show` (Low passes High's ports on). S.ct[port] holds
+ * the state: ask, run, done (pairs or timeout), err. */
+S.ct = {};
+
+function ctCan(p) {
+    var bp = backplane();
+    return p && !p.isSFP && !(bp && bp.indexOf(p.port) >= 0);
+}
+
+function ctRefresh() {
+    if (S.detail == null) return;
+    var b = $("mbody");
+    b.innerHTML = "";
+    b.appendChild(detailBody(S.ports[S.detail]));
+}
+
+var CT_STATUS = { "ok": "ct_ok", "open": "ct_open", "short": "ct_short", "short to another pair": "ct_cross",
+                  "impedance mismatch": "ct_mismatch", "unknown": "ct_unknown" };
+
+/* "Cable test port N\nPair A: open at 2.9 m\n..." */
+function ctParse(txt) {
+    var pairs = [];
+    txt.split(/\r?\n/).forEach(function(l) {
+        var m = l.match(/^Pair ([A-D]): (.*?)(?: at ([0-9.]+) m.*)?\s*$/);
+        if (m) pairs.push({ pair: m[1], st: m[2], m: m[3] });
+    });
+    return pairs;
+}
+
+function ctPoll(port, n) {
+    setTimeout(function() {
+        postCmd("port " + port + " cabletest show", true).then(function(r) {
+            var b = r.body || "";
+            if (/running/i.test(b) && n > 0) return ctPoll(port, n - 1);
+            if (/timed out/.test(b)) S.ct[port] = { st: "done", timeout: true };
+            else if (/no cable/.test(b)) S.ct[port] = { st: "err", msg: t("ct_nocable") };
+            else {
+                var pairs = ctParse(b);
+                S.ct[port] = pairs.length ? { st: "done", pairs: pairs } : { st: "err", msg: t(n > 0 ? "ct_noresult" : "ct_timeout") };
+            }
+            ctRefresh();
+        }).catch(function() {
+            S.ct[port] = { st: "err", msg: t("ct_noresult") };
+            ctRefresh();
+        });
+    }, 1500);
+}
+
+function ctStart(port) {
+    S.ct[port] = { st: "run" };
+    ctRefresh();
+    postCmd("port " + port + " cabletest", true).then(function(r) {
+        var b = (r.body || "").trim();
+        if (/started/.test(b)) return ctPoll(port, 20);
+        S.ct[port] = { st: "err", msg: b.split(/\r?\n/).pop() || t("ct_noresult") };
+        ctRefresh();
+    }).catch(function(e) {
+        S.ct[port] = { st: "err", msg: e.message };
+        ctRefresh();
+    });
+}
+
+function ctSection(p) {
+    var c = S.ct[p.port];
+    if (!c) return null;
+    var d = h("div", { style: "margin-top:12px" }, [h("h3", { class: "small", text: t("ct_title") })]);
+    if (c.st === "ask") {
+        d.appendChild(h("p", { class: "small", text: t("ct_warn") }));
+        d.appendChild(h("p", null, [
+            h("button", { class: "ctl", text: t("c_cancel"), onclick: function() { delete S.ct[p.port]; ctRefresh() } }),
+            document.createTextNode(" "),
+            h("button", { class: "ctl pri", text: t("ct_start"), onclick: function() { ctStart(p.port) } })
+        ]));
+    } else if (c.st === "run") {
+        d.appendChild(h("p", { class: "small mut", text: t("ct_running") }));
+    } else if (c.st === "err") {
+        d.appendChild(h("p", { class: "small", text: c.msg }));
+    } else if (c.timeout) {
+        d.appendChild(h("p", { class: "small", text: t("ct_timeout") }));
+    } else {
+        var tb = h("table", { class: "t" }, [h("thead", null, [h("tr", null, [
+            h("th", { text: t("ct_pair") }), h("th", { text: t("ct_status") }), h("th", { text: t("ct_dist") })])])]);
+        var body = h("tbody");
+        c.pairs.forEach(function(x) {
+            body.appendChild(h("tr", null, [
+                h("td", { text: x.pair }),
+                h("td", { class: x.st === "ok" ? "" : "bad", text: t(CT_STATUS[x.st] || "ct_unknown") }),
+                h("td", { class: "num", text: x.m != null ? x.m + " m" : "-" })
+            ]));
+        });
+        tb.appendChild(body);
+        d.appendChild(tb);
+    }
+    return d;
+}
+
+function detailBody(p) {
+    var d = h("div");
+    d.appendChild(detailTable(p));
+    var c = ctCan(p) && ctSection(p);
+    if (c) d.appendChild(c);
+    return d;
+}
+
 function portDetail(i) {
-    if (!S.ports[i]) return;
-    modal(t("c_port") + " " + (i + 1), detailTable(S.ports[i]));
+    var p = S.ports[i];
+    if (!p) return;
+    modal(t("c_port") + " " + (i + 1), detailBody(p), ctCan(p) ? [h("button", {
+        class: "ctl",
+        text: t("ct_btn"),
+        onclick: function() {
+            var c = S.ct[p.port];
+            if (c && c.st === "run") return;
+            S.ct[p.port] = { st: "ask" };
+            ctRefresh();
+        }
+    })] : []);
     S.detail = i;
 }
 

@@ -939,7 +939,6 @@ void parse_port(void)
 	}
 	phy_settings.port = atoi_results_u8;
 
-	print_string("Logical Port: "); print_byte(phy_settings.port); write_char('\n');
 	phy_settings.duplex = PHY_DUPLEX_BOTH;
 
 	if (cmd_compare(2, "show")) {

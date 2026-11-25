@@ -27,8 +27,15 @@
 #define RTCT_ST_DONE		0x40
 #define RTCT_ST_CROSS_SHORT	0x80
 
-#define RTCT_LEN_ZERO		150
-#define RTCT_LEN_PER_50CM	43
+/* Length: the high bytes of the SRAM words at RTCT_SRAM_LEN + 4 * pair and
+ * the one after it, as Linux reads them for the RTL8224
+ * (drivers/net/phy/realtek/realtek_main.c, rtl8224_pair_len_get(), which
+ * uses 620 and 78). Measured on the RTL8372 of a REM-8x: an empty port
+ * reads 200 on its open pairs, a 2 m cable open at the far end 296-348
+ * (mean 322), so 200 is the jack and about 61 counts make a metre. Only
+ * two points: the scale wants a longer cable to confirm it. */
+#define RTCT_LEN_ZERO		200
+#define RTCT_LEN_PER_M		61
 
 #define PHY_POWER		0xa610
 #define PHY_POWER_OFF		0x0800
@@ -40,6 +47,8 @@
 #define CT_IDLE			0
 #define CT_SILENCE		1
 #define CT_RUN			2
+#define CT_FORCE		3	// 1000/Full forced, settling before the test
+#define CT_FORCE_TICKS		(SYS_TICK_HZ / 2)	// 500 ms, as Linux waits
 #define CT_POLL_TICKS		(SYS_TICK_HZ / 20)
 #define CT_POLLS		100
 
@@ -56,11 +65,12 @@ __xdata uint8_t ct_pair;
 __xdata uint8_t ct_flags;
 __xdata uint16_t ct_bmcr;
 __xdata uint8_t ct_result[4];
-__xdata uint16_t ct_len[4];
+__xdata uint16_t ct_len[4];	// 0.1 m
+__xdata uint16_t ct_raw[4];
 
+/* Needs 1000/Full forced CT_FORCE_TICKS earlier, see cabletest_tick() */
 void rtl_phy_cable_test_start(uint8_t port) __banked
 {
-	phy_write(port, PHY_MMD31, PHY_MMD31_FEDCR, BMCR_1G_FULL);
 	phy_write(port, PHY_MMD31, RTCT_CTRL, RTCT_CTRL_START);
 }
 
@@ -94,12 +104,19 @@ bool rtl_phy_cable_test_get_status(uint8_t port) __banked
 
 		phy_write(port, PHY_MMD31, RTCT_SRAM_ADDR, RTCT_SRAM_LEN + (ct_pair << 2));
 		phy_read(port, PHY_MMD31, RTCT_SRAM_DATA);
-		ct_len[ct_pair] = SFR_DATA_U16;
-		ct_len[ct_pair] = ct_len[ct_pair] > RTCT_LEN_ZERO ? ct_len[ct_pair] - RTCT_LEN_ZERO : 0;
-		ct_len[ct_pair] = ct_len[ct_pair] * 5 / RTCT_LEN_PER_50CM;
+		ct_raw[ct_pair] = SFR_DATA_U16 & 0xff00;
+		phy_write(port, PHY_MMD31, RTCT_SRAM_ADDR, RTCT_SRAM_LEN + (ct_pair << 2) + 1);
+		phy_read(port, PHY_MMD31, RTCT_SRAM_DATA);
+		ct_raw[ct_pair] |= SFR_DATA_U16 >> 8;
+		ct_len[ct_pair] = ct_raw[ct_pair] > RTCT_LEN_ZERO
+			? (uint16_t)((uint32_t)(ct_raw[ct_pair] - RTCT_LEN_ZERO) * 10 / RTCT_LEN_PER_M) : 0;
 	}
 	return true;
 }
+
+/* With nothing plugged in the pairs are open right at the jack, and the
+ * echo of that often shows on one pair as a short a few metres out */
+#define CT_NOCABLE_DM		2	// Open at up to 0.2 m: no cable on that pair
 
 static void cabletest_print(void)
 {
@@ -107,6 +124,14 @@ static void cabletest_print(void)
 	print_phys_port(ct_port);
 	if (!ct_valid) {
 		print_string(": timed out\n");
+		return;
+	}
+	ct_flags = 0;	// Pairs open at the jack
+	for (ct_pair = 0; ct_pair < 4; ct_pair++)
+		if (ct_result[ct_pair] == CABLE_RESULT_OPEN && ct_len[ct_pair] <= CT_NOCABLE_DM)
+			ct_flags++;
+	if (ct_flags >= 2) {
+		print_string(": no cable\n");
 		return;
 	}
 	write_char('\n');
@@ -136,7 +161,9 @@ static void cabletest_print(void)
 		itoa_short(ct_len[ct_pair] / 10);
 		write_char('.');
 		write_char('0' + ct_len[ct_pair] % 10);
-		print_string(" m\n");
+		print_string(" m (raw ");
+		itoa_short(ct_raw[ct_pair]);
+		print_string(")\n");
 	}
 }
 
@@ -194,6 +221,15 @@ void cabletest_tick(void) __banked
 			print_string("Cable test aborted, port is off\n");
 			return;
 		}
+		// Linux forces 1000/Full and lets it settle before it starts the test
+		phy_write(ct_port, PHY_MMD31, PHY_MMD31_FEDCR, BMCR_1G_FULL);
+		timer_set(&ct_timer, CT_FORCE_TICKS);
+		ct_state = CT_FORCE;
+		return;
+	}
+	if (ct_state == CT_FORCE) {
+		if (!timer_expired(&ct_timer))
+			return;
 		rtl_phy_cable_test_start(ct_port);
 		ct_polls = CT_POLLS;
 		timer_set(&ct_timer, CT_POLL_TICKS);
