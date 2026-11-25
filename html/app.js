@@ -165,6 +165,17 @@ var LANG = {
         ct_timeout: "The test timed out.",
         ct_noresult: "No result.",
         ct_nocable: "No cable plugged in.",
+        ct_about: "About the cable test",
+        ct_help: [
+            "The port sends a pulse down each of the four wire pairs (A-D) and listens for echoes. The link drops for a few seconds while it does.",
+            "ok: the pair is intact and terminated by a device at the far end. A terminated pair sends nothing back, so it has no length.",
+            "open: the pair ends at that distance - a cable with nothing on the far end, a break, or a pair the device does not use.",
+            "short: the two wires of the pair touch at that distance. Short to another pair: wires of different pairs touch (crushed cable, miswired plug). Impedance mismatch: a bad joint, coupler or wrong cable type.",
+            "To measure a cable's length, unplug its far end: the open pairs then show the length.",
+            "A 100M device uses only pairs A and B; open or short on C and D is normal there, and PoE devices often show C and D as short.",
+            "Distances: about +/-0.5 m on short cables, a few percent on long ones; the four pairs differ a little because each is twisted differently. Leads shorter than about 0.3 m read as no cable.",
+            "A port that is switched off is powered up for the test only and stays off."
+        ],
         lldp_enable: "Send Frames",
         stp_pcs: "Path cost",
         stp_pcs_long: "Long (32 bit)",
@@ -3116,6 +3127,16 @@ function ctStart(port) {
     });
 }
 
+function ctHelp() {
+    var ul = h("ul", { class: "small", style: "margin:6px 0 0 18px;padding:0" });
+    var lines = LANG[rtlLang].ct_help || LANG.en.ct_help;
+    lines.forEach(function(l) { ul.appendChild(h("li", { text: l, style: "margin-bottom:4px" })) });
+    var d = h("details", { style: "margin-top:8px" }, [h("summary", { class: "small mut", style: "cursor:pointer", text: t("ct_about") }), ul]);
+    if (S.ctHelpOpen) d.open = true;
+    d.addEventListener("toggle", function() { S.ctHelpOpen = d.open });	// Kept over the status refresh
+    return d;
+}
+
 function ctSection(p) {
     var c = S.ct[p.port];
     if (!c) return null;
@@ -3147,6 +3168,7 @@ function ctSection(p) {
         tb.appendChild(body);
         d.appendChild(tb);
     }
+    d.appendChild(ctHelp());
     return d;
 }
 
