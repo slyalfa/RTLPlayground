@@ -67,6 +67,7 @@ __xdata uint16_t ct_bmcr;
 __xdata uint8_t ct_result[4];
 __xdata uint16_t ct_len[4];	// 0.1 m
 __xdata uint16_t ct_raw[4];
+__xdata uint8_t ct_off;		// The port was off: powered up only for the test
 
 /* Needs 1000/Full forced CT_FORCE_TICKS earlier, see cabletest_tick() */
 void rtl_phy_cable_test_start(uint8_t port) __banked
@@ -180,19 +181,21 @@ void cabletest_run(void) __banked
 		return;
 	}
 
-	// A test started on a port that is off never ends and blocks the PHY until reset.
-	phy_read(phy_settings.port, PHY_MMD31, PHY_POWER);
-	if (SFR_DATA_U16 & PHY_POWER_OFF) {
-		print_string("Port is off\n");
-		return;
-	}
-
 	ct_port = phy_settings.port;
 	phy_read(ct_port, PHY_MMD31, PHY_MMD31_FEDCR);
 	ct_bmcr = SFR_DATA_U16;
 
 	// Forcing the speed leaves the link up; only a power-down silences the partner.
 	phy_write(ct_port, PHY_MMD31, PHY_MMD31_FEDCR, BMCR_PDOWN_1G_FULL);
+
+	// A test on a PHY that is off (`port N off`) never ends and blocks it until
+	// a reset: power it up for the test, still held down by the BMCR above and
+	// later forced to 1000/Full without autonegotiation, so no link comes up;
+	// cabletest_tick() switches it off again at the end.
+	phy_read(ct_port, PHY_MMD31, PHY_POWER);
+	ct_off = (SFR_DATA_U16 & PHY_POWER_OFF) ? 1 : 0;
+	if (ct_off)
+		phy_write(ct_port, PHY_MMD31, PHY_POWER, SFR_DATA_U16 & ~PHY_POWER_OFF);
 	timer_set(&ct_timer, SYS_TICK_HZ);
 	ct_have = 0;
 	ct_state = CT_SILENCE;
@@ -215,7 +218,7 @@ void cabletest_tick(void) __banked
 		if (!timer_expired(&ct_timer))
 			return;
 		phy_read(ct_port, PHY_MMD31, PHY_POWER);
-		if (SFR_DATA_U16 & PHY_POWER_OFF) {
+		if (SFR_DATA_U16 & PHY_POWER_OFF) {	// `port N off` meanwhile
 			phy_write(ct_port, PHY_MMD31, PHY_MMD31_FEDCR, ct_bmcr);
 			ct_state = CT_IDLE;
 			print_string("Cable test aborted, port is off\n");
@@ -245,6 +248,10 @@ void cabletest_tick(void) __banked
 		return;
 
 	phy_write(ct_port, PHY_MMD31, RTCT_CTRL, 0);
+	if (ct_off) {	// Off again before the BMCR lets the PHY link up
+		phy_read(ct_port, PHY_MMD31, PHY_POWER);
+		phy_write(ct_port, PHY_MMD31, PHY_POWER, SFR_DATA_U16 | PHY_POWER_OFF);
+	}
 	phy_write(ct_port, PHY_MMD31, PHY_MMD31_FEDCR, ct_bmcr | BMCR_ANRESTART);
 	ct_have = 1;
 	ct_state = CT_IDLE;
