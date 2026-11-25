@@ -103,6 +103,7 @@ extern __xdata uint8_t lldp_nb_ip[LLDP_NB_PORTS][4];	// IPv4 management address,
 void lldp_in(void) __banked;	// A trapped frame to 01:80:c2:00:00:0e in uip_buf
 void lldp_show(void) __banked;	// `lldp show`
 extern __xdata uint8_t lldp_mgmt_ip[4];	// `lldp addr`, 0.0.0.0 = our own address
+extern __xdata uint8_t lldp_chassis[6];	// `lldp chassis`, 0 = our own MAC
 void lldp_shutdown(uint16_t ports) __banked;
 void lldp_set_addresses(void) __banked;
 void lldp_set_rtl_wrapper(void) __banked;

@@ -1134,32 +1134,59 @@ uint8_t peer_json_local(__xdata uint8_t *q) __banked
 
 
 /*
- * LLDP: High has no IP address of its own (see handle_rx()), so it announces
- * ours as the management address of the switch: "lldp addr <our IP>" on
- * High, quietly, whenever we send LLDP ourselves. That also covers a reboot
- * of High and a new address of ours from DHCP.
+ * LLDP: High has no IP address of its own (see handle_rx()), and to its
+ * neighbors the board is one switch: High announces our management address,
+ * our hostname and our MAC as the chassis ID. Low runs on High, quietly,
+ * whenever it sends LLDP itself:
+ *   lldp addr <our IP>
+ *   hostname <our hostname>
+ *   lldp chassis <our MAC>
+ * That also covers a reboot of High, a new address from DHCP and a new
+ * hostname or MAC set here.
  */
+static void r_dec(uint8_t b)
+{
+	if (b >= 100)
+		r_char('0' + b / 100);
+	if (b >= 10)
+		r_char('0' + (b / 10) % 10);
+	r_char('0' + b % 10);
+}
+
+static void r_str(__code const char *s)
+{
+	while (*s)
+		r_char(*s++);
+}
+
+static __code const char peer_hex[] = "0123456789abcdef";
+
 void peer_lldp_addr(void) __banked
 {
-	static __code const char * __xdata s;
 	__xdata uint8_t i, b;
 
 	if (!machine.peer_i2c_addr)
 		return;
-	s = "lldp addr ";
 	r_hi = 1;
 	route_hi_n = 0;
-	while (*s)
-		r_char(*s++);
+	r_str("lldp addr ");
 	for (i = 0; i < 4; i++) {
-		b = ((__xdata uint8_t *)uip_hostaddr)[i];
-		if (b >= 100)
-			r_char('0' + b / 100);
-		if (b >= 10)
-			r_char('0' + (b / 10) % 10);
-		r_char('0' + b % 10);
+		r_dec(((__xdata uint8_t *)uip_hostaddr)[i]);
 		if (i < 3)
 			r_char('.');
+	}
+	if (hostname[0]) {
+		r_str("\nhostname ");
+		for (i = 0; hostname[i] && i < sizeof(hostname) - 1; i++)
+			r_char(hostname[i]);
+	}
+	r_str("\nlldp chassis ");
+	for (i = 0; i < 6; i++) {
+		b = uip_ethaddr.addr[i];
+		r_char(peer_hex[b >> 4]);
+		r_char(peer_hex[b & 0xf]);
+		if (i < 5)
+			r_char(':');
 	}
 	route_hi[route_hi_n] = NUL;
 	peer_quiet = 1;

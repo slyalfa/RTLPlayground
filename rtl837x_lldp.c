@@ -35,6 +35,9 @@ __xdata uint16_t lldp_logical_port_status = 0xffff;
 /* Announced as our management address instead of our own (`lldp addr`):
  * the High chip of a REM-8x has no IP of its own, Low sets its address */
 __xdata uint8_t lldp_mgmt_ip[4];
+/* Announced as our chassis ID instead of our MAC (`lldp chassis`): so that
+ * both chips of a REM-8x are one system to the neighbors */
+__xdata uint8_t lldp_chassis[MAC_ADDR_LEN];
 
 __xdata uint16_t lldp_nb_ttl[LLDP_NB_PORTS];
 __xdata char lldp_nb_sys[LLDP_NB_PORTS][LLDP_NB_SYS_LEN + 1];
@@ -58,6 +61,8 @@ void lldp_init(void) __banked
     lldp_nb_clear();
     for (uint8_t i = 0; i < 4; i++)
         lldp_mgmt_ip[i] = 0;
+    for (uint8_t i = 0; i < MAC_ADDR_LEN; i++)
+        lldp_chassis[i] = 0;
 }
 
 static uint16_t lldp_links(void) __reentrant
@@ -148,7 +153,10 @@ static void lldp_send_ports(uint16_t ttl, uint16_t ports) __reentrant
     *p++ = LLDP_CHASSIS_ID_TLV_LENGTH;
     *p++ = LLDP_CHASSIS_ID_TLV_SUBTYPE;
 
-    memcpy(p, uip_ethaddr.addr, MAC_ADDR_LEN);
+    if (lldp_chassis[0] | lldp_chassis[1] | lldp_chassis[2])
+        memcpy(p, lldp_chassis, MAC_ADDR_LEN);
+    else
+        memcpy(p, uip_ethaddr.addr, MAC_ADDR_LEN);
     p += MAC_ADDR_LEN;
 
     //Port ID

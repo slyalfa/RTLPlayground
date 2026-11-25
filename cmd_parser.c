@@ -2409,6 +2409,17 @@ void cmd_parser(void) __banked
 				} else {
 					cmd_error("lldp addr <a.b.c.d>|off\n");
 				}
+			} else if (cmd_compare(1, "chassis")) {
+				// The chassis ID (a MAC) to announce, if not our own
+				if (cmd_words_len == 3 && cmd_compare(2, "off")) {
+					for (uint8_t i = 0; i < 6; i++)
+						lldp_chassis[i] = 0;
+				} else if (cmd_words_len == 3 && parse_mac(cmd_words_b[2])) {
+					for (uint8_t i = 0; i < 6; i++)
+						lldp_chassis[i] = mac_parse_result[i];
+				} else {
+					cmd_error("lldp chassis <aa:bb:cc:dd:ee:ff>|off\n");
+				}
 			} else if (cmd_compare(1, "on")) {
 				print_string("LLDP enabled\n");
 				lldp_enabled = 1;
