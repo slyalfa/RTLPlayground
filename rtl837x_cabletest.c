@@ -30,12 +30,14 @@
 /* Length: the high bytes of the SRAM words at RTCT_SRAM_LEN + 4 * pair and
  * the one after it, as Linux reads them for the RTL8224
  * (drivers/net/phy/realtek/realtek_main.c, rtl8224_pair_len_get(), which
- * uses 620 and 78). Measured on the RTL8372 of a REM-8x: an empty port
- * reads 200 on its open pairs, a 2 m cable open at the far end 296-348
- * (mean 322), so 200 is the jack and about 61 counts make a metre. Only
- * two points: the scale wants a longer cable to confirm it. */
+ * uses 620 and 78). Measured on the RTL8372 of a REM-8x with cables open
+ * at the far end: an empty jack reads about 200, so that is 0 m; 2 m +
+ * 100 ft (32.5 m) reads 2616-2872, mean 2772: 79 counts per metre (Linux
+ * has 78). A single 1 m cable on the High chip reads 264/304 (0.8/1.3 m),
+ * a 2 m cable 296-348 (mean 322, 1.5 m): short cables are good to about
+ * half a metre. */
 #define RTCT_LEN_ZERO		200
-#define RTCT_LEN_PER_M		61
+#define RTCT_LEN_PER_M		79
 
 #define PHY_POWER		0xa610
 #define PHY_POWER_OFF		0x0800
@@ -115,9 +117,11 @@ bool rtl_phy_cable_test_get_status(uint8_t port) __banked
 	return true;
 }
 
-/* With nothing plugged in the pairs are open right at the jack, and the
- * echo of that often shows on one pair as a short a few metres out */
-#define CT_NOCABLE_DM		2	// Open at up to 0.2 m: no cable on that pair
+/* With nothing plugged in the pairs are open (or mismatched) right at the
+ * jack, and the echo of that often shows on another pair as a short a few
+ * metres out: two pairs faulted at the jack mean no cable. A cable shorter
+ * than about 0.3 m looks the same. */
+#define CT_NOCABLE_RAW		220	// A fault (open, mismatch) up to here (~0.3 m) is the empty jack, ~200
 
 static void cabletest_print(void)
 {
@@ -129,7 +133,7 @@ static void cabletest_print(void)
 	}
 	ct_flags = 0;	// Pairs open at the jack
 	for (ct_pair = 0; ct_pair < 4; ct_pair++)
-		if (ct_result[ct_pair] == CABLE_RESULT_OPEN && ct_len[ct_pair] <= CT_NOCABLE_DM)
+		if (ct_result[ct_pair] != CABLE_RESULT_OK && ct_raw[ct_pair] <= CT_NOCABLE_RAW)
 			ct_flags++;
 	if (ct_flags >= 2) {
 		print_string(": no cable\n");
