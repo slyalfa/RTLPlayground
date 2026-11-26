@@ -99,6 +99,8 @@ extern __xdata struct dhcp_state dhcp_state;
 #define STP_CATCH_UP 8
 #define SFP_TICK_STEP 10
 static __xdata struct timer second;
+
+static void sys_led_heartbeat(void);
 static __xdata struct timer sfp_poll;
 static __xdata struct timer delay_timer;
 
@@ -1249,6 +1251,7 @@ static void handle_tick(void)
 #ifdef POE_PRESENT
 	poe_tick();
 #endif
+	sys_led_heartbeat();
 }
 
 
@@ -1452,6 +1455,27 @@ void set_sys_led_state(uint8_t state)
 	reg_read_m(RTL837X_REG_LED_MODE);
 	sfr_mask_data(2, 0x03, state);
 	reg_write_m(RTL837X_REG_LED_MODE);
+}
+
+/* System LED heartbeat: toggled by the main loop, so it stops blinking when
+ * the CPU hangs (the LED's own blink modes would carry on). Left alone while
+ * the LED blinks on purpose (button feedback, firmware update). */
+#define SYS_LED_HB_TICKS	(SYS_TICK_HZ / 2)
+static __xdata struct timer sys_led_hb;
+static __xdata uint8_t sys_led_hb_on, sys_led_hb_started;
+
+static void sys_led_heartbeat(void)
+{
+	if (sys_led_hb_started && !timer_expired(&sys_led_hb))
+		return;
+	sys_led_hb_started = 1;
+	timer_set(&sys_led_hb, SYS_LED_HB_TICKS);
+	reg_read_m(RTL837X_REG_LED_MODE);
+	// The mode is in bits 17:16, sfr_data[1] (see set_sys_led_state())
+	if ((sfr_data[1] & 0x03) == SYS_LED_FAST || (sfr_data[1] & 0x03) == SYS_LED_SLOW)
+		return;
+	sys_led_hb_on ^= 1;
+	set_sys_led_state(sys_led_hb_on ? SYS_LED_ON : SYS_LED_OFF);
 }
 
 
