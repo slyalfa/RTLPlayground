@@ -38,8 +38,8 @@ __code const struct machine machine = {
         .peer_link = 11,
         .peer_link_remote = 12,
 
-        /* This Turns on the SYS LED
-         * It seems the SYS LED is not used for heartbeat */
+        /* The system LED (D1116) on LED pin 28: the main loop blinks it as a
+         * heartbeat, see sys_led_heartbeat() */
         .high_leds = {
                 .mux = LED_28_SYS,
                 .enable = LED_28_SYS
