@@ -25,4 +25,7 @@
 void leds_dump(void) __banked;
 void leds_setup(void) __banked;
 
+/* The spare LED of a (physical) port, machine.port_xled; 0 if switched */
+uint8_t port_xled_set(uint8_t phys, __xdata uint8_t on) __banked;
+
 #endif

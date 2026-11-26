@@ -46,6 +46,9 @@
 #endif
 #endif
 
+/* machine.port_xled entry: LED pin n, so that 0 can mean no LED */
+#define XLED(n)		((n) + 1)
+
 #define MACHINE_PORT_VALID(p) \
 	((uint8_t)((p) - MACHINE_MIN_PORT) <= (MACHINE_MAX_PORT - MACHINE_MIN_PORT))
 
@@ -128,6 +131,9 @@ struct machine {
 	// Defines which led-set (0-3) will be used for given logical port
 	// led-set is physical group of LEDs that can be configured to show different port status combinations (see port_led_set below)
 	uint8_t port_led_set[9];
+	// A spare LED per port that the firmware switches (PoE power, `portled`):
+	// its LED pin per logical port as XLED(pin), 0 for none; see port_xled_set()
+	uint8_t port_xled[9];
 	// Defines led-set configuration, applied to all ports using particular led-set
 	// Each led-set can have 4 different hardware LED configurations. Which one should be used, depends how LED is wired on the board
 	// See stock RTL837X_REG_LED3_2_SETx and RTL837X_REG_LED1_0_SETx registers for reference configuration

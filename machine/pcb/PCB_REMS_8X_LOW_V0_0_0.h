@@ -4,6 +4,7 @@
 /* Ports numbered as one switch with the High chip, see the .c file */
 #define MACHINE_PHYS_PORTS 12
 
+
 /* PoE: TPS23880 (U2201, sheet 22) on the bus to the High chip (SDA0/SCL0,
  * see .peer_i2c), RESET on GPIO30 (POE_RST, sheet 9), no interrupt line.
  * Channel 1-8 -> port (sheets 14, 15): ch1-4 Low ports 1-4, ch5-7 High's

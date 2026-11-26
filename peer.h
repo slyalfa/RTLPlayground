@@ -12,6 +12,7 @@ bool peer_reg_read_m(uint16_t reg) __banked;
 bool peer_reg_write_m(uint16_t reg) __banked;
 uint8_t peer_cmd(__xdata uint8_t *line) __banked;
 void peer_lldp_addr(void) __banked;	// High announces our IP over LLDP
+void peer_portled(__xdata uint16_t on, __xdata uint16_t which) __banked;	// High's spare LEDs
 void peer_route_after(void) __banked;	// High's part of a status command
 void peer_lcap_putc(char c) __banked;	// Our output while it is collected
 extern __xdata uint8_t peer_lcap;

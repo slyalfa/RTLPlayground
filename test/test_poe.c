@@ -17,6 +17,7 @@
 #include "rtl837x_regs.h"
 #include "machine.h"
 #include "poe/poe.h"
+#include "timer.h"
 #include <test/support.h>
 #include <test/hw_mock.h>
 
@@ -25,6 +26,11 @@ struct machine_runtime machine_detected = { .isRTL8373 = 0 };
 void print_byte(uint8_t v) { (void)v; }
 void print_short(uint16_t v) { (void)v; }
 void delay(uint16_t t) { (void)t; }
+/* poe_tick(): no timer, spare LEDs or peer here */
+void timer_set(struct timer *t, clock_time_t i) { (void)t; (void)i; }
+int timer_expired(struct timer *t) { (void)t; return 1; }
+uint8_t port_xled_set(uint8_t phys, uint8_t on) { (void)phys; (void)on; return 1; }
+void peer_portled(uint16_t on, uint16_t which) { (void)on; (void)which; }
 
 /* RESET pin */
 static int reset_low, reset_pulses;

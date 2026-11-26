@@ -1092,6 +1092,19 @@ bool sfp_print_measurements(uint8_t sfp)
 }
 
 
+/* portled <port> on|off: the spare LED of a port, if the board has one */
+static void parse_portled(void)
+{
+	if (cmd_words_len == 3 && cmd_parse_port(cmd_words_b[1])
+	    && (cmd_compare(2, "on") || cmd_compare(2, "off"))) {
+		if (port_xled_set(machine.log_to_phys_port[atoi_results_u8], cmd_compare(2, "on")))
+			cmd_error("No spare LED on this port\n");
+		return;
+	}
+	cmd_error("portled <port> on|off\n");
+}
+
+
 void parse_sfp(void)
 {
 	uint8_t slot;
@@ -2338,6 +2351,8 @@ void cmd_parser(void) __banked
 			print_gpio_status();
 		} else if (cmd_compare(0, "leds")) {
 			leds_dump();
+		} else if (cmd_compare(0, "portled")) {
+			parse_portled();
 		} else if (cmd_compare(0, "regget")) {
 			parse_regget();
 		} else if (cmd_compare(0, "regset")) {

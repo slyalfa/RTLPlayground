@@ -805,7 +805,7 @@ bool peer_route(void) __banked
 		goto after;
 	}
 
-	if (w_is(0, "port") || w_is(0, "mtu") || w_is(0, "pvid") || w_is(0, "storm")) {
+	if (w_is(0, "port") || w_is(0, "mtu") || w_is(0, "pvid") || w_is(0, "storm") || w_is(0, "portled")) {
 		w = 1;
 		goto single;
 	} else if ((w_is(0, "eee") || w_is(0, "bw")) && cmd_words_len > 2) {
@@ -1330,4 +1330,30 @@ void peer_wait_ready(void) __banked
 		delay(SYS_TICK_HZ);	// An I2C error comes back at once
 	}
 	print_string(" no answer: its part of the config is lost\n");
+}
+
+
+/* Spare port LEDs on High: "portled <p> on|off" for each port p in which,
+ * on if its bit in on is set; quietly, see poe_tick() */
+void peer_portled(__xdata uint16_t on, __xdata uint16_t which) __banked
+{
+	__xdata uint8_t p;
+
+	if (!machine.peer_i2c_addr || !which)
+		return;
+	r_hi = 1;
+	route_hi_n = 0;
+	for (p = 1; p <= PEER_PORTS; p++) {
+		if (!(which & ((uint16_t)1 << p)))
+			continue;
+		if (route_hi_n)
+			r_char('\n');
+		r_str("portled ");
+		r_dec(p);
+		r_str((on & ((uint16_t)1 << p)) ? " on" : " off");
+	}
+	route_hi[route_hi_n] = NUL;
+	peer_quiet = 1;
+	peer_cmd(route_hi);
+	peer_quiet = 0;
 }

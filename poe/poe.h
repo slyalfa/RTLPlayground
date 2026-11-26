@@ -68,6 +68,9 @@ extern __xdata uint16_t poe_vin_mv;	// supply voltage, mV
 extern __xdata int8_t   poe_temp;	// degrees C
 uint8_t poe_get_global(void) __banked;	// 0 if the controller answered
 
+/* From the main loop: spare port LEDs show PoE power, see machine.port_xled */
+void poe_tick(void) __banked;
+
 #if MACHINE_POE_CHIP == POE_TPS23880
 /* `poe reg`: raw register access, see poe/tps23880.c */
 uint16_t poe_reg(uint8_t dev, __xdata uint8_t reg, __xdata uint16_t val) __banked;

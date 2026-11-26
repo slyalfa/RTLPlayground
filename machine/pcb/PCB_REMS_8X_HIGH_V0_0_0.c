@@ -56,6 +56,10 @@ __code const struct machine machine = {
                 .enable = LED_28_SYS
         },
         .port_led_set = { 0, 0, 0, 1, 0, 0, 0, 0, 1},
+        /* Spare LEDs, lit while the port delivers PoE: port 5 D1215 (LED_6),
+         * port 6 D1202 (LED_4), port 7 D1213 (LED_3); port 8 goes to the
+         * on-board ESP32, without PoE */
+        .port_xled = { 0, 0, 0, 0, XLED(6), XLED(4), XLED(3), 0, 0 },
         .led_sets = {
                 {       /* Set 0 for RJ45 connectors */
 

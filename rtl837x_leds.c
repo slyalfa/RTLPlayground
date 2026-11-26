@@ -24,6 +24,8 @@ extern __code const struct machine machine;
 
 extern __xdata uint8_t sfr_data[4];
 
+static __xdata uint8_t port_xled_boot[9];	// Per logical port: 0 not read yet, else 1 + boot polarity
+
 
 void leds_setup(void) __banked
 {
@@ -154,5 +156,42 @@ void leds_setup(void) __banked
 		}
 		lptr += 8;
 	}
+	// Spare port LEDs: off until switched on, see port_xled_set()
+	for (__xdata uint8_t i = 0; i < 9; i++)
+		if (machine.port_xled[i])
+			reg_bit_clear(RTL837X_REG_LED_GLB_IO_EN, machine.port_xled[i] - 1);
 	print_string("leds_setup done\n");
+}
+
+
+/* Switch the spare LED of physical port phys. Returns 0 if done, 1 if the
+ * port is not ours or has none. The LED mux sends these pins no signal, so
+ * an enabled pin shows the "inactive" level; the LEDs hang on the strap
+ * pull resistors in either direction (on the REM-8x LED_4 lights at
+ * polarity 1, LED_0/3/6 at 0), so on is the pin enabled with its polarity
+ * bit flipped from the boot value, off is the boot value and the pin
+ * disabled. */
+uint8_t port_xled_set(uint8_t phys, __xdata uint8_t on) __banked
+{
+	__xdata uint8_t l, pin;
+
+	if (!phys || phys > MACHINE_PHYS_PORTS)
+		return 1;
+	l = machine.phys_to_log_port[phys - 1];
+	if (!MACHINE_PORT_VALID(l) || machine.log_to_phys_port[l] != phys || !machine.port_xled[l])
+		return 1;
+	pin = machine.port_xled[l] - 1;
+	if (!port_xled_boot[l]) {	// Boot polarity, before we touch it
+		reg_read_m(RTL837X_REG_LED_GLB_ACTIVE);
+		port_xled_boot[l] = 1 + ((sfr_data[3 - (pin >> 3)] >> (pin & 7)) & 1);
+	}
+	if (!on)
+		reg_bit_clear(RTL837X_REG_LED_GLB_IO_EN, pin);
+	if ((port_xled_boot[l] - 1) ^ (on ? 1 : 0))	// On: flipped, off: as booted
+		reg_bit_set(RTL837X_REG_LED_GLB_ACTIVE, pin);
+	else
+		reg_bit_clear(RTL837X_REG_LED_GLB_ACTIVE, pin);
+	if (on)
+		reg_bit_set(RTL837X_REG_LED_GLB_IO_EN, pin);
+	return 0;
 }

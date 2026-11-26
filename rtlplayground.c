@@ -1246,6 +1246,9 @@ static void handle_tick(void)
 	lldp_tick();
 	health_phase(HEALTH_PH_LLDP);
 	cabletest_tick();
+#ifdef POE_PRESENT
+	poe_tick();
+#endif
 }
 
 

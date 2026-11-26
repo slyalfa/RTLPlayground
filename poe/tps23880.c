@@ -28,6 +28,9 @@
 #include "rtl837x_flash.h"
 #include "machine.h"
 #include "machine_defs.h"	// I2CBUS() for POE_I2C_BUS
+#include "timer.h"
+#include "rtl837x_leds.h"
+#include "peer.h"
 #include "poe.h"
 
 extern __code const struct machine machine;
@@ -437,4 +440,55 @@ uint8_t poe_get_global(void) __banked
 		poe_temp = tps_calc < 20000 ? -(int8_t)((20000 - tps_calc) / 1000) : (int8_t)((tps_calc - 20000) / 1000);
 	}
 	return 0;
+}
+
+
+/*
+ * Spare port LEDs show PoE power (machine.port_xled): once a second the
+ * power-good bits of both devices; a port whose state changed gets its LED
+ * switched, here or on the peer chip. Every 30 s all of them are sent
+ * again, so a peer that rebooted catches up.
+ */
+#define POE_LED_REFRESH		30
+
+static __xdata struct timer poe_led_timer;
+static __xdata uint16_t poe_led_on, poe_led_new, poe_led_chg, poe_led_peer;
+static __xdata uint8_t poe_led_count = POE_LED_REFRESH;
+static __xdata uint8_t poe_led_started;	// poe_led_timer is set
+
+void poe_tick(void) __banked
+{
+	if (poe_led_started && !timer_expired(&poe_led_timer))
+		return;
+	poe_led_started = 1;
+	timer_set(&poe_led_timer, SYS_TICK_HZ);
+
+	poe_led_new = 0;
+	if (poe_fw) {
+		for (tps_j = 0; tps_j < 2; tps_j++) {
+			if (!TPS_RD(POE_TPS_ADDR + tps_j, TPS_POWER_STATUS, 1))
+				continue;
+			for (tps_k = 0; tps_k < 4; tps_k++) {
+				tps_ch = (tps_j << 2) + tps_k;
+				if (tps_ports[tps_ch] && (tps_data[0] & (0x10 << tps_k)))
+					poe_led_new |= (uint16_t)1 << tps_ports[tps_ch];
+			}
+		}
+	}
+	poe_led_chg = poe_led_new ^ poe_led_on;
+	if (++poe_led_count >= POE_LED_REFRESH) {
+		poe_led_count = 0;
+		for (tps_ch = 0; tps_ch < 8; tps_ch++)
+			if (tps_ports[tps_ch])
+				poe_led_chg |= (uint16_t)1 << tps_ports[tps_ch];
+	}
+	poe_led_on = poe_led_new;
+	poe_led_peer = 0;
+	for (tps_k = 1; tps_k <= MACHINE_PHYS_PORTS; tps_k++) {
+		if (!(poe_led_chg & ((uint16_t)1 << tps_k)))
+			continue;
+		if (port_xled_set(tps_k, (poe_led_on >> tps_k) & 1))
+			poe_led_peer |= (uint16_t)1 << tps_k;	// Not ours: the peer's
+	}
+	peer_portled(poe_led_on, poe_led_peer);
 }
